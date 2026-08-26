@@ -307,6 +307,26 @@ create policy "rules are readable" on public.service_rules
   using (true);
 
 -- ===========================================================================
+-- Migration: brake_pads / brake_rotors split into front/rear
+-- ===========================================================================
+-- A single "Brake Pads" flag could not say which axle needed the work, which
+-- is exactly the number a person acting on it needs. Front and rear now track
+-- (and flag) separately as brake_pads_front/rear and brake_rotors_front/rear,
+-- seeded below.
+--
+-- The old two rows are dropped here, but only when nothing still references
+-- them — the foreign key on service_records.service_type would reject the
+-- delete otherwise. If you already have brake history logged under the old
+-- keys, this is a no-op and those rows keep working exactly as before; they
+-- just do not get the front/rear split until re-logged (or backfilled by
+-- hand) under the new item_keys.
+delete from public.service_rules
+ where item_key in ('brake_pads', 'brake_rotors')
+   and not exists (
+     select 1 from public.service_records sr where sr.service_type = service_rules.item_key
+   );
+
+-- ===========================================================================
 -- Seed data
 -- ===========================================================================
 -- Universal gas-vehicle items only. Anything make/model-specific or EV-specific
@@ -334,14 +354,24 @@ insert into public.service_rules (
    'miles', 20, 'changed',
    'Some modern automatics are sold with a "lifetime" fill. If your manual says so, treat this as informational rather than overdue.'),
 
-  ('brake_pads', 'Brake Pads', 'measurable',
+  ('brake_pads_front', 'Brake Pads (Front)', 'measurable',
    null, null,  null, null, null, null,  5, 3,
    'mm', 30, 'replaced',
+   'New pads are roughly 10-12mm. The measured value comes from a shop inspection report. Front pads usually wear faster than rear.'),
+
+  ('brake_pads_rear', 'Brake Pads (Rear)', 'measurable',
+   null, null,  null, null, null, null,  5, 3,
+   'mm', 31, 'replaced',
    'New pads are roughly 10-12mm. The measured value comes from a shop inspection report.'),
 
-  ('brake_rotors', 'Brake Rotors', 'qualitative',
+  ('brake_rotors_front', 'Brake Rotors (Front)', 'qualitative',
    null, null,  null, null, null, null,  null, null,
    'verdict', 40, 'inspected',
+   'No universal millimetre value — every rotor carries its own stamped minimum thickness. What gets recorded is the shop''s stated verdict: within spec, near minimum, or below minimum.'),
+
+  ('brake_rotors_rear', 'Brake Rotors (Rear)', 'qualitative',
+   null, null,  null, null, null, null,  null, null,
+   'verdict', 41, 'inspected',
    'No universal millimetre value — every rotor carries its own stamped minimum thickness. What gets recorded is the shop''s stated verdict: within spec, near minimum, or below minimum.'),
 
   ('brake_fluid', 'Brake Fluid', 'interval',

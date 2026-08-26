@@ -9,7 +9,7 @@
  * `api/extract-receipt.js` and must never be imported from `src/components`
  * or `src/pages`.
  */
-import { DEFAULT_ITEM_KEYS, VERDICTS, toCanonicalMeasurement } from './serviceItems.js'
+import { BRAKE_ROTOR_KEYS, DEFAULT_ITEM_KEYS, VERDICTS, toCanonicalMeasurement } from './serviceItems.js'
 
 const API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models'
 const DEFAULT_MODEL = 'gemini-2.5-flash'
@@ -39,10 +39,11 @@ Field guidance:
 - Inspection sheets record measurements even where no work was done. Capture these; they are the most valuable thing on the page.
   - measured_value and measured_unit: report the number EXACTLY AS PRINTED and name the unit you read it in — "32nds" for a reading like 8/32 or 8-32nds, "mm" for millimetres, "in" for decimal inches. Do NOT convert between units; the caller handles that.
   - Tire tread is normally in 32nds, brake pad thickness normally in millimetres, but honour whatever the sheet actually uses.
-  - When several tires or wheel positions are listed separately, report the LOWEST reading. The worst corner is the one that governs.
+  - When several tires are listed separately, report the LOWEST reading on item_key "tires_tread" — the worst corner is the one that governs.
   - A tire tread reading belongs on item_key "tires_tread"; new tires being fitted belongs on "tires_age".
+  - Brakes are never one reading: front and rear wear at different rates and get serviced separately, so a front number and a rear number are two distinct line items, not one merged into the other. Use item_key "brake_pads_front" / "brake_pads_rear" for pad thickness and "brake_rotors_front" / "brake_rotors_rear" for the rotor verdict, matching whichever axle that line is actually about. Within one axle, if left and right are both printed, report the lower of the two. If a brake reading is printed with no axle stated anywhere on the page and you cannot tell which one it is, tag that line "other" and keep the wording in "description" — do not guess an axle.
 
-- verdict: only for item_key "brake_rotors". Rotors have no universal thickness spec, so what matters is the shop's written call. Map it to within_spec, near_minimum, or below_minimum. Omit if the sheet says nothing about rotors.
+- verdict: only for item_key "brake_rotors_front" or "brake_rotors_rear". Rotors have no universal thickness spec, so what matters is the shop's written call. Map it to within_spec, near_minimum, or below_minimum. Omit if the sheet says nothing about rotors.
 
 - raw_text: a faithful transcription of every legible line on the document, preserving the order it appears in.
 - is_service_record: false if this is not a vehicle service document at all — a blurry surface, a grocery receipt, a photo of a person.
@@ -243,7 +244,7 @@ export function normaliseExtraction(raw, itemKeys = DEFAULT_ITEM_KEYS) {
         item?.measured_value != null
           ? `${item.measured_value}${item.measured_unit ? ` ${item.measured_unit}` : ''}`
           : null,
-      verdict: key === 'brake_rotors' && VERDICTS.includes(item?.verdict) ? item.verdict : null,
+      verdict: BRAKE_ROTOR_KEYS.includes(key) && VERDICTS.includes(item?.verdict) ? item.verdict : null,
     })
   }
 

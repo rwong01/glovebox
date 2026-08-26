@@ -6,7 +6,7 @@ import { parseMeasurementValue, toCanonicalMeasurement } from './serviceItems.js
 describe('measurement conversion', () => {
   it('keeps a reading already in the canonical unit', () => {
     expect(toCanonicalMeasurement(8, '32nds', 'tires_tread')).toBe(8)
-    expect(toCanonicalMeasurement(5.5, 'mm', 'brake_pads')).toBe(5.5)
+    expect(toCanonicalMeasurement(5.5, 'mm', 'brake_pads_front')).toBe(5.5)
   })
 
   it('converts a metric tread reading into 32nds', () => {
@@ -15,7 +15,7 @@ describe('measurement conversion', () => {
   })
 
   it('converts 32nds pad thickness into millimetres', () => {
-    expect(toCanonicalMeasurement(8, '32nds', 'brake_pads')).toBeCloseTo(6.35, 2)
+    expect(toCanonicalMeasurement(8, '32nds', 'brake_pads_front')).toBeCloseTo(6.35, 2)
   })
 
   it('converts decimal inches', () => {
@@ -27,8 +27,8 @@ describe('measurement conversion', () => {
   })
 
   it('rejects a reading no pad or tyre could have', () => {
-    expect(toCanonicalMeasurement(400, 'mm', 'brake_pads')).toBeNull()
-    expect(toCanonicalMeasurement(-3, 'mm', 'brake_pads')).toBeNull()
+    expect(toCanonicalMeasurement(400, 'mm', 'brake_pads_front')).toBeNull()
+    expect(toCanonicalMeasurement(-3, 'mm', 'brake_pads_front')).toBeNull()
   })
 
   it('ignores measurements on items that are not measurable', () => {
@@ -82,7 +82,7 @@ describe('extraction normalisation', () => {
     const out = normaliseExtraction({
       ...base,
       line_items: [
-        { item_key: 'brake_rotors', description: 'Rotors', verdict: 'near_minimum' },
+        { item_key: 'brake_rotors_front', description: 'Rotors', verdict: 'near_minimum' },
         { item_key: 'oil_change', description: 'Oil', verdict: 'below_minimum' },
       ],
     })

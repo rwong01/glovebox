@@ -14,8 +14,10 @@
 export const DEFAULT_ITEM_KEYS = [
   'oil_change',
   'transmission_fluid',
-  'brake_pads',
-  'brake_rotors',
+  'brake_pads_front',
+  'brake_pads_rear',
+  'brake_rotors_front',
+  'brake_rotors_rear',
   'brake_fluid',
   'tires_tread',
   'tires_age',
@@ -30,8 +32,19 @@ export const DEFAULT_ITEM_KEYS = [
 /** The unit each measurable item is stored in. Everything else converts to this. */
 export const CANONICAL_UNITS = {
   tires_tread: '32nds',
-  brake_pads: 'mm',
+  brake_pads_front: 'mm',
+  brake_pads_rear: 'mm',
 }
+
+/**
+ * Front and rear brakes wear at different rates and get replaced separately,
+ * so each axle is tracked — and flagged — as its own item rather than one
+ * merged "brake pads" reading that can't say which end of the car it means.
+ */
+export const BRAKE_PAD_KEYS = ['brake_pads_front', 'brake_pads_rear']
+
+/** Same split as BRAKE_PAD_KEYS, for the qualitative rotor verdict. */
+export const BRAKE_ROTOR_KEYS = ['brake_rotors_front', 'brake_rotors_rear']
 
 const MM_PER_32ND = 25.4 / 32 // 0.79375
 
