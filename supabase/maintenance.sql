@@ -12,23 +12,52 @@
 -- ---------------------------------------------------------------------------
 -- 1. How good are my dates?
 -- ---------------------------------------------------------------------------
--- Records scanned before the date-extraction fix have one of two problems:
--- the date was dropped entirely, or today's date was substituted because the
--- column used to be NOT NULL. The second is the dangerous one — a 2019 oil
--- change dated to the day you scanned it will wreck the driving-pace estimate
--- that every projection depends on.
+-- Records scanned before the date-extraction fix have one of two problems: the
+-- date was dropped entirely, or the day of the scan was substituted because
+-- the column used to be NOT NULL. The second is the dangerous one — a 2019 oil
+-- change dated to the day you scanned it wrecks the driving-pace estimate that
+-- every projection depends on.
+--
+-- Columns:
+--   dated_as_today    the substitution. Wrong, and silently so.
+--   no_date           honest but unusable for interval flagging.
+--   app_can_recover   the transcription still holds a date, so the in-app
+--                     "Recover dates" banner will fix these for free.
+--   needs_hand_entry  no date anywhere in the text — usually a continuation
+--                     page, which inherits its date once grouped, or a receipt
+--                     that genuinely never had one.
+--
+-- The regex mirrors the parser in src/lib/receiptDate.js. It is an
+-- approximation: it asks only whether something date-shaped is present, so
+-- treat `app_can_recover` as an upper bound and the banner's own count as the
+-- authority.
+with tagged as (
+  select
+    v.nickname,
+    r.source,
+    r.service_date,
+    r.created_at::date as scanned_on,
+    coalesce(r.raw_notes, '') ~*
+      '(\d{4}[-/.]\d{1,2}[-/.]\d{1,2})|(\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4})|((jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(st|nd|rd|th)?,?\s+\d{2,4})|(\d{1,2}(st|nd|rd|th)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?,?\s+\d{2,4})'
+      as date_in_text
+  from public.service_records r
+  join public.vehicles v on v.id = r.vehicle_id
+)
 select
-  v.nickname,
-  count(*)                                                as records,
-  count(*) filter (where r.service_date is null)          as undated,
-  count(*) filter (where r.service_date = r.created_at::date
-                     and r.source = 'ocr')                as likely_substituted,
-  min(r.service_date)                                     as earliest,
-  max(r.service_date)                                     as latest
-from public.service_records r
-join public.vehicles v on v.id = r.vehicle_id
-group by v.nickname
-order by v.nickname;
+  nickname,
+  count(*) filter (where source = 'ocr')                                as scanned_items,
+  count(*) filter (where source = 'ocr' and service_date = scanned_on)  as dated_as_today,
+  count(*) filter (where source = 'ocr' and service_date is null)       as no_date,
+  count(*) filter (where source = 'ocr'
+                     and (service_date is null or service_date = scanned_on)
+                     and date_in_text)                                  as app_can_recover,
+  count(*) filter (where source = 'ocr'
+                     and (service_date is null or service_date = scanned_on)
+                     and not date_in_text)                              as needs_hand_entry,
+  count(*) filter (where source = 'manual')                             as typed_by_hand
+from tagged
+group by nickname
+order by nickname;
 
 
 -- ---------------------------------------------------------------------------
