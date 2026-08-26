@@ -1,0 +1,152 @@
+@import 'tailwindcss';
+
+/* Class-based dark mode — the toggle writes `.dark` onto <html>. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * Palette. Every colour the app uses is declared here once and nowhere else.
+ *
+ * Warm off-white / warm near-black rather than #FFF and #000, and a brick-red
+ * accent — the intent is "garage/tool", not "design-tool default".
+ *
+ * Status colours appear twice on purpose. The base value (`--gb-ok`, `--gb-warn`,
+ * `--gb-bad`) is used for decorative marks: the left-border bar and the dot on a
+ * flag row. The `-text` value is a contrast-corrected variant for anywhere the
+ * colour carries actual words. Light-mode amber in particular only reaches ~3.1:1
+ * on the page background, which is fine for a 3px bar and not fine for a label.
+ */
+:root {
+  --gb-bg: #fafaf9;
+  --gb-surface: #ffffff;
+  --gb-surface-raised: #f4f2f0;
+  --gb-fg: #211d1b;
+  --gb-muted: #7a736c;
+  --gb-line: #e7e3df;
+  --gb-line-strong: #d6d0ca;
+
+  --gb-accent: #b3452e;
+  --gb-accent-hover: #9a3a26;
+  --gb-accent-fg: #ffffff;
+  --gb-accent-soft: #f7ebe7;
+
+  --gb-ok: #3f7a4e;
+  --gb-ok-text: #356842;
+  --gb-ok-soft: #eef4ef;
+
+  --gb-warn: #b8862e;
+  --gb-warn-text: #8f6516;
+  --gb-warn-soft: #f8f1e2;
+
+  --gb-bad: #b3452e;
+  --gb-bad-text: #a03d28;
+  --gb-bad-soft: #f7ebe7;
+
+  --gb-ring: #b3452e;
+}
+
+.dark {
+  --gb-bg: #161312;
+  --gb-surface: #211d1b;
+  --gb-surface-raised: #2a2523;
+  --gb-fg: #f2efec;
+  --gb-muted: #a79e96;
+  --gb-line: #332d2a;
+  --gb-line-strong: #443c38;
+
+  --gb-accent: #d9694a;
+  --gb-accent-hover: #e67a5c;
+  /* Near-black on the lifted accent: white would only hit ~3.4:1 here. */
+  --gb-accent-fg: #1a1513;
+  --gb-accent-soft: #33211c;
+
+  --gb-ok: #5fa36e;
+  --gb-ok-text: #5fa36e;
+  --gb-ok-soft: #1c2a20;
+
+  --gb-warn: #d9a340;
+  --gb-warn-text: #d9a340;
+  --gb-warn-soft: #2e2618;
+
+  --gb-bad: #e0684a;
+  --gb-bad-text: #e0684a;
+  --gb-bad-soft: #33211c;
+
+  --gb-ring: #d9694a;
+}
+
+/*
+ * `inline` matters here: it tells Tailwind to emit the raw `var(--gb-*)`
+ * reference into each utility instead of a fixed value, which is what lets a
+ * single `bg-surface` class resolve differently under `.dark`.
+ */
+@theme inline {
+  --color-bg: var(--gb-bg);
+  --color-surface: var(--gb-surface);
+  --color-surface-raised: var(--gb-surface-raised);
+  --color-fg: var(--gb-fg);
+  --color-muted: var(--gb-muted);
+  --color-line: var(--gb-line);
+  --color-line-strong: var(--gb-line-strong);
+
+  --color-accent: var(--gb-accent);
+  --color-accent-hover: var(--gb-accent-hover);
+  --color-accent-fg: var(--gb-accent-fg);
+  --color-accent-soft: var(--gb-accent-soft);
+
+  --color-ok: var(--gb-ok);
+  --color-ok-text: var(--gb-ok-text);
+  --color-ok-soft: var(--gb-ok-soft);
+
+  --color-warn: var(--gb-warn);
+  --color-warn-text: var(--gb-warn-text);
+  --color-warn-soft: var(--gb-warn-soft);
+
+  --color-bad: var(--gb-bad);
+  --color-bad-text: var(--gb-bad-text);
+  --color-bad-soft: var(--gb-bad-soft);
+
+  --font-display: 'Space Grotesk', 'Söhne', 'General Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+@layer base {
+  html {
+    background-color: var(--gb-bg);
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--gb-bg);
+    color: var(--gb-fg);
+    font-family: var(--font-sans);
+    /* Kill the iOS tap flash — the app is mobile-first and it reads as a bug. */
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Mileage, dates and thresholds sit in columns; they need to line up. */
+  table,
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--gb-ring);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer utilities {
+  /* Keeps fixed bottom bars clear of the iOS home indicator. */
+  .pb-safe {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+}

@@ -1,0 +1,20 @@
+node_modules
+dist
+dist-ssr
+.vercel
+coverage
+
+# Real keys live here and must never be committed. Copy .env.local.example instead.
+.env
+.env.local
+.env.*.local
+
+*.local
+.DS_Store
+npm-debug.log*
+yarn-error.log*
+*.tsbuildinfo
+
+.idea
+.vscode/*
+!.vscode/extensions.json
