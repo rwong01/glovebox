@@ -29,16 +29,53 @@ npm run dev
 Running with placeholder keys shows a setup screen listing exactly these steps,
 so there is no white page to debug.
 
-**1. Supabase** — create a project, then from the dashboard copy:
+**1. Supabase** — create the project directly at supabase.com. Do not use the
+Vercel or GitHub integrations; see [Deploying](#deploying) for why. Then copy
+two values from Project Settings → API:
 
-| Value                     | Where                                  |
-| ------------------------- | -------------------------------------- |
-| `VITE_SUPABASE_URL`       | Project Settings → Data API            |
-| `VITE_SUPABASE_ANON_KEY`  | Project Settings → API Keys            |
+| Value                    | Which key                                                  |
+| ------------------------ | ---------------------------------------------------------- |
+| `VITE_SUPABASE_URL`      | Project URL, `https://<ref>.supabase.co`                    |
+| `VITE_SUPABASE_ANON_KEY` | the **publishable** key — see the table below               |
 
-The anon key is safe in the browser: it grants nothing on its own. Row-level
-security is what scopes data to the signed-in user. There is no `service_role`
-key anywhere in this project, by design.
+Supabase renamed its keys, so the dashboard may show either generation:
+
+| Dashboard label                       | Use it? | Why                                          |
+| ------------------------------------- | ------- | -------------------------------------------- |
+| Publishable key (`sb_publishable_…`)   | ✅ this  | The public browser key. RLS applies.         |
+| Legacy anon key (`eyJ…`)               | ✅ same  | Older name for the identical role.           |
+| Secret key (`sb_secret_…`)             | ❌       | **Bypasses RLS.**                            |
+| Legacy service_role key (`eyJ…`)       | ❌       | **Bypasses RLS.**                            |
+| JWT keys / JWT secret                  | ❌       | Signs user access tokens; not an API key.    |
+
+The variable name is the long-standing convention, not a constraint — the value
+goes straight to `createClient()`, which accepts either format.
+
+The publishable key is safe in the browser: it grants nothing on its own, and
+row-level security is what scopes data to the signed-in user. Pasting a secret
+key instead would *appear* to work while silently disabling that scoping, which
+is the one dangerous mix-up here. There is no `service_role` key anywhere in
+this project, by design.
+
+**1b. Authentication → URL Configuration.** Easy to miss and it breaks email
+links: the app requests a redirect back to `window.location.origin`, and
+Supabase rejects any redirect that is not on the allow-list.
+
+- Site URL: your deployed URL (or `http://localhost:5173` before you deploy)
+- Redirect URLs: `http://localhost:5173/**` and `https://<your-app>.vercel.app/**`
+
+Two more auth settings worth a decision:
+
+- **Confirm email** (Authentication → Providers → Email). Off means signup logs
+  you straight in; on means you click a link first. The login screen handles
+  both.
+- **Allow new users to sign up** — turn this **off** once your account exists.
+  The app sits on a public URL, and while RLS keeps anyone else's data separate,
+  the API routes authenticate rather than authorise: any registered user could
+  spend your Gemini quota. Closing signups is what actually locks it to you.
+
+If magic links stop arriving, it is Supabase's built-in email sender, which is
+rate-limited to a handful per hour. Fine for one person; custom SMTP otherwise.
 
 **2. Gemini** — a key from [Google AI Studio](https://aistudio.google.com/apikey)
 as `GEMINI_API_KEY`. Deliberately without a `VITE_` prefix, so Vite will not
@@ -63,9 +100,25 @@ Vercel CLI.
 
 ### Deploying
 
-Import the repo on Vercel and add the same three variables in project settings.
-`vercel.json` already sets the SPA rewrite and gives the extraction function a
-60-second ceiling. Everything else is Vercel's Vite preset.
+Import the repo on Vercel and add the same three variables in project settings,
+for Production, Preview and Development. `vercel.json` already sets the SPA
+rewrite and gives the extraction function a 60-second ceiling. Everything else
+is Vercel's Vite preset.
+
+`VITE_*` values are baked into the bundle at build time, so redeploy after
+changing any of them.
+
+**Skip the Vercel↔Supabase integration.** It injects `NEXT_PUBLIC_SUPABASE_URL`
+and `SUPABASE_URL`, following Next.js naming. Vite only exposes `VITE_`-prefixed
+variables to browser code, so `src/lib/supabaseClient.js` would still see
+nothing and you would be adding the `VITE_` ones by hand anyway. It also injects
+a `service_role` key this project deliberately never uses. The Supabase GitHub
+integration is for migration and preview-branch workflows; this project ships
+one `schema.sql` you paste once.
+
+You do **not** need a Storage bucket, Edge Functions, a connection string, or
+the database password. Receipt images go to the vision model and are dropped —
+only the transcription is stored, so nothing but text reaches the database.
 
 ---
 
