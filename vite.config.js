@@ -16,6 +16,14 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react(), tailwindcss(), apiRoutes()],
     server: { port: 5173 },
+    build: {
+      // React, the Supabase SDK and the router account for nearly all of a
+      // ~565kB / 167kB-gzipped bundle, and all three are needed on first paint
+      // (the session check runs before anything renders), so code-splitting
+      // them would buy nothing. Raised just above the real figure rather than
+      // switched off, so a genuine regression still trips it.
+      chunkSizeWarningLimit: 650,
+    },
     test: {
       environment: 'jsdom',
       include: ['src/**/*.test.{js,jsx}'],
