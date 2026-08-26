@@ -24,22 +24,40 @@ const RULES = [
     unit: 'miles', sort_order: 10,
   },
   {
-    item_key: 'brake_pads', display_name: 'Brake Pads', type: 'measurable',
+    item_key: 'brake_pads_front', display_name: 'Brake Pads (Front)', type: 'measurable',
     yellow_threshold: 5, red_threshold: 3, unit: 'mm', sort_order: 30,
   },
   {
-    item_key: 'brake_rotors', display_name: 'Brake Rotors', type: 'qualitative',
+    item_key: 'brake_pads_rear', display_name: 'Brake Pads (Rear)', type: 'measurable',
+    yellow_threshold: 5, red_threshold: 3, unit: 'mm', sort_order: 31,
+  },
+  {
+    item_key: 'brake_rotors_front', display_name: 'Brake Rotors (Front)', type: 'qualitative',
     unit: 'verdict', sort_order: 40,
   },
   {
-    item_key: 'tires_tread', display_name: 'Tire Tread', type: 'measurable',
+    item_key: 'brake_rotors_rear', display_name: 'Brake Rotors (Rear)', type: 'qualitative',
+    unit: 'verdict', sort_order: 41,
+  },
+  {
+    item_key: 'tires_tread_front', display_name: 'Tire Tread (Front)', type: 'measurable',
     yellow_threshold: 4, red_threshold: 2, unit: '32nds of an inch', sort_order: 60,
   },
   {
-    item_key: 'tires_age', display_name: 'Tire Age', type: 'interval', action_verb: 'fitted',
+    item_key: 'tires_tread_rear', display_name: 'Tire Tread (Rear)', type: 'measurable',
+    yellow_threshold: 4, red_threshold: 2, unit: '32nds of an inch', sort_order: 61,
+  },
+  {
+    item_key: 'tires_age_front', display_name: 'Tire Age (Front)', type: 'interval', action_verb: 'fitted',
     mileage_interval: null, time_interval_months: 72,
     yellow_mileage: null, yellow_months: 60, red_mileage: null, red_months: 72,
     unit: 'months', sort_order: 70,
+  },
+  {
+    item_key: 'tires_age_rear', display_name: 'Tire Age (Rear)', type: 'interval', action_verb: 'fitted',
+    mileage_interval: null, time_interval_months: 72,
+    yellow_mileage: null, yellow_months: 60, red_mileage: null, red_months: 72,
+    unit: 'months', sort_order: 71,
   },
   {
     item_key: 'engine_air_filter', display_name: 'Engine Air Filter', type: 'interval', action_verb: 'replaced',
@@ -179,7 +197,7 @@ describe('driving pace', () => {
   it('collapses several line items from one visit into a single reading', () => {
     const obs = collectOdometerObservations(vehicle(), [
       record({ service_date: monthsAgo(6), mileage_at_service: 50000 }),
-      record({ service_date: monthsAgo(6), mileage_at_service: 50000, service_type: 'tires_tread' }),
+      record({ service_date: monthsAgo(6), mileage_at_service: 50000, service_type: 'tires_tread_front' }),
     ])
     expect(obs).toHaveLength(1)
   })
@@ -270,10 +288,10 @@ describe('interval items', () => {
 
   it('flags old tires on a barely-driven car — the case a mileage-only tracker misses', () => {
     const flags = build([
-      record({ service_type: 'tires_age', service_date: monthsAgo(78), mileage_at_service: 30000 }),
+      record({ service_type: 'tires_age_front', service_date: monthsAgo(78), mileage_at_service: 30000 }),
       record({ service_date: monthsAgo(3), mileage_at_service: 34000 }),
     ])
-    const tires = flagFor(flags, 'tires_age')
+    const tires = flagFor(flags, 'tires_age_front')
     expect(tires.status).toBe(STATUS.RED)
     expect(tires.reason).toMatch(/past the 6-year limit/)
     expect(tires.reason).toMatch(/^Last fitted/) // not "Last done"
@@ -328,10 +346,10 @@ describe('measurable items', () => {
   it('extrapolates wear forward from two readings', () => {
     // 10/32 -> 8/32 over 20,000 miles = 1/32 per 10,000 miles.
     const flags = build([
-      record({ service_type: 'tires_tread', service_date: monthsAgo(30), mileage_at_service: 20000, measured_value: 10 }),
-      record({ service_type: 'tires_tread', service_date: monthsAgo(6), mileage_at_service: 40000, measured_value: 8 }),
+      record({ service_type: 'tires_tread_front', service_date: monthsAgo(30), mileage_at_service: 20000, measured_value: 10 }),
+      record({ service_type: 'tires_tread_front', service_date: monthsAgo(6), mileage_at_service: 40000, measured_value: 8 }),
     ])
-    const tread = flagFor(flags, 'tires_tread')
+    const tread = flagFor(flags, 'tires_tread_front')
     expect(tread.status).toBe(STATUS.GREEN)
     // ~833 mi/month over the six months since -> roughly 5,000 more miles -> ~7.5/32
     expect(tread.estimatedValue).toBeGreaterThan(7)
@@ -341,19 +359,19 @@ describe('measurable items', () => {
 
   it('goes red once the extrapolated value crosses the replace line', () => {
     const flags = build([
-      record({ service_type: 'tires_tread', service_date: monthsAgo(36), mileage_at_service: 20000, measured_value: 6 }),
-      record({ service_type: 'tires_tread', service_date: monthsAgo(6), mileage_at_service: 50000, measured_value: 2.5 }),
+      record({ service_type: 'tires_tread_front', service_date: monthsAgo(36), mileage_at_service: 20000, measured_value: 6 }),
+      record({ service_type: 'tires_tread_front', service_date: monthsAgo(6), mileage_at_service: 50000, measured_value: 2.5 }),
     ])
-    const tread = flagFor(flags, 'tires_tread')
+    const tread = flagFor(flags, 'tires_tread_front')
     expect(tread.status).toBe(STATUS.RED)
     expect(tread.reason).toMatch(/replace line/)
   })
 
   it('uses a single reading as-is instead of inventing a trend', () => {
     const flags = build([
-      record({ service_type: 'brake_pads', service_date: monthsAgo(4), mileage_at_service: 50000, measured_value: 2.5 }),
+      record({ service_type: 'brake_pads_front', service_date: monthsAgo(4), mileage_at_service: 50000, measured_value: 2.5 }),
     ])
-    const pads = flagFor(flags, 'brake_pads')
+    const pads = flagFor(flags, 'brake_pads_front')
     expect(pads.status).toBe(STATUS.RED)
     expect(pads.estimatedValue).toBe(2.5)
     expect(pads.detail).toMatch(/Only one measurement/)
@@ -361,13 +379,13 @@ describe('measurable items', () => {
 
   it('restarts the wear rate after a replacement rather than averaging through it', () => {
     const flags = build([
-      record({ service_type: 'brake_pads', service_date: monthsAgo(48), mileage_at_service: 10000, measured_value: 10 }),
-      record({ service_type: 'brake_pads', service_date: monthsAgo(36), mileage_at_service: 30000, measured_value: 4 }),
+      record({ service_type: 'brake_pads_front', service_date: monthsAgo(48), mileage_at_service: 10000, measured_value: 10 }),
+      record({ service_type: 'brake_pads_front', service_date: monthsAgo(36), mileage_at_service: 30000, measured_value: 4 }),
       // New pads fitted.
-      record({ service_type: 'brake_pads', service_date: monthsAgo(24), mileage_at_service: 40000, measured_value: 11 }),
-      record({ service_type: 'brake_pads', service_date: monthsAgo(6), mileage_at_service: 55000, measured_value: 9 }),
+      record({ service_type: 'brake_pads_front', service_date: monthsAgo(24), mileage_at_service: 40000, measured_value: 11 }),
+      record({ service_type: 'brake_pads_front', service_date: monthsAgo(6), mileage_at_service: 55000, measured_value: 9 }),
     ])
-    const pads = flagFor(flags, 'brake_pads')
+    const pads = flagFor(flags, 'brake_pads_front')
     expect(pads.status).toBe(STATUS.GREEN)
     // Averaging across the replacement would have produced a nonsense rate.
     expect(pads.estimatedValue).toBeGreaterThan(7)
@@ -375,7 +393,7 @@ describe('measurable items', () => {
   })
 
   it('reports unknown when nothing was ever measured', () => {
-    expect(flagFor(build([]), 'tires_tread').status).toBe(STATUS.UNKNOWN)
+    expect(flagFor(build([]), 'tires_tread_front').status).toBe(STATUS.UNKNOWN)
   })
 
   it('formats measurements in the unit a person would say', () => {
@@ -390,29 +408,29 @@ describe('qualitative items', () => {
 
   it('maps the shop verdict straight through', () => {
     const flags = build([
-      record({ service_type: 'brake_rotors', service_date: monthsAgo(3), mileage_at_service: 50000, verdict: 'below_minimum' }),
+      record({ service_type: 'brake_rotors_front', service_date: monthsAgo(3), mileage_at_service: 50000, verdict: 'below_minimum' }),
     ])
-    expect(flagFor(flags, 'brake_rotors').status).toBe(STATUS.RED)
+    expect(flagFor(flags, 'brake_rotors_front').status).toBe(STATUS.RED)
   })
 
   it('is green on a recent clean verdict', () => {
     const flags = build([
-      record({ service_type: 'brake_rotors', service_date: monthsAgo(4), mileage_at_service: 50000, verdict: 'within_spec' }),
+      record({ service_type: 'brake_rotors_front', service_date: monthsAgo(4), mileage_at_service: 50000, verdict: 'within_spec' }),
     ])
-    expect(flagFor(flags, 'brake_rotors').status).toBe(STATUS.GREEN)
+    expect(flagFor(flags, 'brake_rotors_front').status).toBe(STATUS.GREEN)
   })
 
   it('stops trusting a clean verdict once it is stale', () => {
     const flags = build([
-      record({ service_type: 'brake_rotors', service_date: monthsAgo(40), mileage_at_service: 50000, verdict: 'within_spec' }),
+      record({ service_type: 'brake_rotors_front', service_date: monthsAgo(40), mileage_at_service: 50000, verdict: 'within_spec' }),
     ])
-    const rotors = flagFor(flags, 'brake_rotors')
+    const rotors = flagFor(flags, 'brake_rotors_front')
     expect(rotors.status).toBe(STATUS.YELLOW)
     expect(rotors.reason).toMatch(/within spec then/)
   })
 
   it('reports unknown with no verdict on file', () => {
-    expect(flagFor(build([]), 'brake_rotors').status).toBe(STATUS.UNKNOWN)
+    expect(flagFor(build([]), 'brake_rotors_front').status).toBe(STATUS.UNKNOWN)
   })
 })
 
@@ -462,7 +480,7 @@ describe('the list as a whole', () => {
         record({ service_date: monthsAgo(30), mileage_at_service: 20000 }),
         record({ service_date: monthsAgo(14), mileage_at_service: 50000 }), // oil: red
         record({ service_type: 'battery', service_date: monthsAgo(50), mileage_at_service: 40000 }), // yellow
-        record({ service_type: 'brake_rotors', service_date: monthsAgo(2), mileage_at_service: 51000, verdict: 'within_spec' }), // green
+        record({ service_type: 'brake_rotors_front', service_date: monthsAgo(2), mileage_at_service: 51000, verdict: 'within_spec' }), // green
       ],
     })
 

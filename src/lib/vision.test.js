@@ -5,30 +5,30 @@ import { parseMeasurementValue, toCanonicalMeasurement } from './serviceItems.js
 
 describe('measurement conversion', () => {
   it('keeps a reading already in the canonical unit', () => {
-    expect(toCanonicalMeasurement(8, '32nds', 'tires_tread')).toBe(8)
-    expect(toCanonicalMeasurement(5.5, 'mm', 'brake_pads')).toBe(5.5)
+    expect(toCanonicalMeasurement(8, '32nds', 'tires_tread_front')).toBe(8)
+    expect(toCanonicalMeasurement(5.5, 'mm', 'brake_pads_front')).toBe(5.5)
   })
 
   it('converts a metric tread reading into 32nds', () => {
     // 6.35mm is exactly 8/32".
-    expect(toCanonicalMeasurement(6.35, 'mm', 'tires_tread')).toBe(8)
+    expect(toCanonicalMeasurement(6.35, 'mm', 'tires_tread_front')).toBe(8)
   })
 
   it('converts 32nds pad thickness into millimetres', () => {
-    expect(toCanonicalMeasurement(8, '32nds', 'brake_pads')).toBeCloseTo(6.35, 2)
+    expect(toCanonicalMeasurement(8, '32nds', 'brake_pads_front')).toBeCloseTo(6.35, 2)
   })
 
   it('converts decimal inches', () => {
-    expect(toCanonicalMeasurement(0.25, 'in', 'tires_tread')).toBe(8)
+    expect(toCanonicalMeasurement(0.25, 'in', 'tires_tread_front')).toBe(8)
   })
 
   it('assumes the canonical unit when the model does not say', () => {
-    expect(toCanonicalMeasurement(6, null, 'tires_tread')).toBe(6)
+    expect(toCanonicalMeasurement(6, null, 'tires_tread_front')).toBe(6)
   })
 
   it('rejects a reading no pad or tyre could have', () => {
-    expect(toCanonicalMeasurement(400, 'mm', 'brake_pads')).toBeNull()
-    expect(toCanonicalMeasurement(-3, 'mm', 'brake_pads')).toBeNull()
+    expect(toCanonicalMeasurement(400, 'mm', 'brake_pads_front')).toBeNull()
+    expect(toCanonicalMeasurement(-3, 'mm', 'brake_pads_front')).toBeNull()
   })
 
   it('ignores measurements on items that are not measurable', () => {
@@ -72,7 +72,7 @@ describe('extraction normalisation', () => {
   it('converts a line item measurement and keeps the raw reading for reference', () => {
     const out = normaliseExtraction({
       ...base,
-      line_items: [{ item_key: 'tires_tread', description: 'Tread depth LF', measured_value: 6.35, measured_unit: 'mm' }],
+      line_items: [{ item_key: 'tires_tread_front', description: 'Tread depth LF', measured_value: 6.35, measured_unit: 'mm' }],
     })
     expect(out.lineItems[0].measured_value).toBe(8)
     expect(out.lineItems[0].measured_raw).toBe('6.35 mm')
@@ -82,7 +82,7 @@ describe('extraction normalisation', () => {
     const out = normaliseExtraction({
       ...base,
       line_items: [
-        { item_key: 'brake_rotors', description: 'Rotors', verdict: 'near_minimum' },
+        { item_key: 'brake_rotors_front', description: 'Rotors', verdict: 'near_minimum' },
         { item_key: 'oil_change', description: 'Oil', verdict: 'below_minimum' },
       ],
     })
