@@ -3,6 +3,7 @@ import { ChevronDown, Search } from 'lucide-react'
 
 import { formatDay } from '../lib/dates.js'
 import { formatCurrency, formatMiles } from '../lib/format.js'
+import { formatMeasurement } from '../lib/flagging.js'
 import { groupIntoVisits } from '../lib/visits.js'
 import { cn } from '../lib/cn.js'
 import { Card } from './ui/Card.jsx'
@@ -27,6 +28,12 @@ export function ServiceLogTable({ records, rules, onEdit }) {
 
   const names = useMemo(
     () => Object.fromEntries(rules.map((r) => [r.item_key, r.display_name])),
+    [rules],
+  )
+
+  // A bare "6" against Tire Tread is unreadable; it needs to say 6/32".
+  const units = useMemo(
+    () => Object.fromEntries(rules.map((r) => [r.item_key, r.unit])),
     [rules],
   )
 
@@ -121,6 +128,7 @@ export function ServiceLogTable({ records, rules, onEdit }) {
               key={visit.key}
               visit={visit}
               names={names}
+              units={units}
               open={openVisits.has(visit.key) || filtering}
               onToggle={() => toggleVisit(visit.key)}
               onEdit={onEdit}
@@ -142,7 +150,7 @@ export function ServiceLogTable({ records, rules, onEdit }) {
   )
 }
 
-function VisitRow({ visit, names, open, onToggle, onEdit }) {
+function VisitRow({ visit, names, units, open, onToggle, onEdit }) {
   const count = visit.records.length
 
   return (
@@ -201,8 +209,14 @@ function VisitRow({ visit, names, open, onToggle, onEdit }) {
                     ) : null}
                   </span>
                   <span className="shrink-0 text-xs text-muted tnum">
-                    {record.measured_value != null ? record.measured_value : null}
-                    {record.cost != null ? formatCurrency(record.cost) : null}
+                    {[
+                      record.measured_value != null
+                        ? formatMeasurement(Number(record.measured_value), units[record.service_type])
+                        : null,
+                      record.cost != null ? formatCurrency(record.cost) : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
                   </span>
                 </button>
               </li>

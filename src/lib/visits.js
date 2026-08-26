@@ -18,8 +18,21 @@ import { toDate } from './dates.js'
 export function groupIntoVisits(records = []) {
   const byKey = new Map()
 
+  // A continuation page has no date or odometer of its own, so the natural key
+  // cannot place it. Its receipt_group can: map each group to the natural key
+  // of whichever page in it did carry a header, and the orphan joins that visit
+  // rather than becoming one.
+  const groupToNaturalKey = new Map()
   for (const record of records) {
-    const key = visitKey(record)
+    if (!record?.receipt_group) continue
+    if (record.service_date == null || record.mileage_at_service == null) continue
+    if (!groupToNaturalKey.has(record.receipt_group)) {
+      groupToNaturalKey.set(record.receipt_group, naturalKey(record))
+    }
+  }
+
+  for (const record of records) {
+    const key = visitKey(record, groupToNaturalKey)
     let visit = byKey.get(key)
 
     if (!visit) {
@@ -73,19 +86,38 @@ export function groupIntoVisits(records = []) {
 /**
  * What makes two records the same visit.
  *
- * `receipt_group` is authoritative when present — it is assigned per scanned
- * document, so every page of one invoice already shares it. Records typed in by
- * hand have none, so they fall back to the natural key: you cannot be at two
- * shops on the same day at the same odometer.
+ * The natural key — date, odometer, shop — wins wherever both a date and an
+ * odometer are known, because it is simply true: you cannot be at one shop
+ * twice on the same day at the same mileage. It also needs no migration, which
+ * matters for records scanned one page at a time before pages were grouped;
+ * each of those got its own `receipt_group` and would otherwise show as a
+ * separate visit forever.
+ *
+ * `receipt_group` is the fallback for records the natural key cannot place — a
+ * continuation page with no date and no odometer of its own. That is exactly
+ * what the group id is for.
  */
-function visitKey(record) {
-  if (record.receipt_group) return `g:${record.receipt_group}`
+function naturalKey(record) {
   return [
     'k',
     record.service_date ?? '',
     record.mileage_at_service ?? '',
     (record.vendor ?? '').trim().toLowerCase(),
   ].join('|')
+}
+
+function visitKey(record, groupToNaturalKey) {
+  // Enough on the record itself to place it.
+  if (record.service_date != null && record.mileage_at_service != null) {
+    return naturalKey(record)
+  }
+
+  // Otherwise borrow the key of the header page it was scanned with.
+  if (record.receipt_group) {
+    return groupToNaturalKey.get(record.receipt_group) ?? `g:${record.receipt_group}`
+  }
+
+  return naturalKey(record)
 }
 
 function numberOrNull(value) {

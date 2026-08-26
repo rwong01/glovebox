@@ -92,8 +92,32 @@ describe('extraction normalisation', () => {
 
   it('rejects an impossible date rather than storing it', () => {
     expect(normaliseExtraction({ ...base, service_date: '2024-02-31' }).serviceDate).toBeNull()
-    expect(normaliseExtraction({ ...base, service_date: '03/03/2024' }).serviceDate).toBeNull()
     expect(normaliseExtraction({ ...base, service_date: '1823-01-01' }).serviceDate).toBeNull()
+  })
+
+  it('accepts a valid date in whatever format the model returned it', () => {
+    // These used to be dropped for not being zero-padded ISO, which is the bug
+    // that left so many scanned records undated.
+    expect(normaliseExtraction({ ...base, service_date: '03/03/2024' }).serviceDate).toBe('2024-03-03')
+    expect(normaliseExtraction({ ...base, service_date: '2024-3-3' }).serviceDate).toBe('2024-03-03')
+    expect(normaliseExtraction({ ...base, service_date: 'Mar 3, 2024' }).serviceDate).toBe('2024-03-03')
+  })
+
+  it('falls back to the printed date when the model failed to convert it', () => {
+    const out = normaliseExtraction({ ...base, service_date: 'unknown', service_date_raw: '03/03/24' })
+    expect(out.serviceDate).toBe('2024-03-03')
+    expect(out.serviceDateSource).toBe('raw')
+  })
+
+  it('recovers a date from the transcription when the fields came back empty', () => {
+    const out = normaliseExtraction({
+      ...base,
+      service_date: null,
+      service_date_raw: null,
+      raw_text: "DAVE'S AUTO  Invoice #12345  Date: 03/03/2024  Odometer 84,210",
+    })
+    expect(out.serviceDate).toBe('2024-03-03')
+    expect(out.serviceDateSource).toBe('text')
   })
 
   it('rejects an odometer reading that is a misread rather than a mileage', () => {

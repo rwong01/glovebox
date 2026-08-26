@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Camera, Plus, SlidersHorizontal } from 'lucide-react'
+import { ArrowLeft, CalendarClock, Camera, Plus, SlidersHorizontal } from 'lucide-react'
 
 import { AppShell } from '../components/AppShell.jsx'
 import { EditRecordDialog } from '../components/EditRecordDialog.jsx'
+import { RepairDatesDialog } from '../components/RepairDatesDialog.jsx'
 import { FlagList } from '../components/FlagList.jsx'
 import { ServiceLogTable } from '../components/ServiceLogTable.jsx'
 import { VehicleDialog } from '../components/VehicleDialog.jsx'
@@ -12,6 +13,7 @@ import { SectionTitle } from '../components/ui/Card.jsx'
 import { EmptyState, ErrorNote, Skeleton } from '../components/ui/States.jsx'
 import { useGarage } from '../hooks/useGarage.js'
 import { buildFlags } from '../lib/flagging.js'
+import { proposeDateRepairs } from '../lib/repairDates.js'
 import { formatOdometer } from '../lib/format.js'
 
 export default function VehicleDetail() {
@@ -21,11 +23,17 @@ export default function VehicleDetail() {
   const [editingRecord, setEditingRecord] = useState(null)
   const [recordOpen, setRecordOpen] = useState(false)
   const [vehicleOpen, setVehicleOpen] = useState(false)
+  const [repairOpen, setRepairOpen] = useState(false)
 
   const vehicle = vehicles.find((v) => v.id === vehicleId)
   const vehicleRecords = useMemo(
     () => records.filter((r) => r.vehicle_id === vehicleId),
     [records, vehicleId],
+  )
+
+  const repairable = useMemo(
+    () => proposeDateRepairs(vehicleRecords).length,
+    [vehicleRecords],
   )
 
   const result = useMemo(() => {
@@ -98,6 +106,20 @@ export default function VehicleDetail() {
         </Button>
       </header>
 
+      {repairable > 0 ? (
+        <button
+          type="button"
+          onClick={() => setRepairOpen(true)}
+          className="mb-4 flex w-full items-center gap-3 rounded-lg border border-warn/30 bg-warn-soft px-3 py-2.5 text-left transition-opacity hover:opacity-80"
+        >
+          <CalendarClock size={16} aria-hidden="true" className="shrink-0 text-warn-text" />
+          <span className="min-w-0 flex-1 text-sm text-warn-text">
+            {repairable} scanned {repairable === 1 ? 'record has' : 'records have'} a date that
+            looks wrong. The real dates are recoverable from the scans — no re-scanning.
+          </span>
+        </button>
+      ) : null}
+
       {vehicleRecords.length === 0 ? (
         <EmptyState
           message="No service records yet."
@@ -140,6 +162,13 @@ export default function VehicleDetail() {
         vehicleId={vehicle.id}
         rules={rules}
         onSaved={refresh}
+      />
+
+      <RepairDatesDialog
+        open={repairOpen}
+        onOpenChange={setRepairOpen}
+        records={vehicleRecords}
+        onRepaired={refresh}
       />
 
       <VehicleDialog

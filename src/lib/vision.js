@@ -9,6 +9,7 @@
  * `api/extract-receipt.js` and must never be imported from `src/components`
  * or `src/pages`.
  */
+import { resolveServiceDate } from './receiptDate.js'
 import { DEFAULT_ITEM_KEYS, VERDICTS, toCanonicalMeasurement } from './serviceItems.js'
 
 const API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models'
@@ -38,7 +39,11 @@ Extract only what is actually printed on the document. Do not infer, estimate, o
 
 Field guidance:
 
-- service_date: the date the work was performed, as YYYY-MM-DD. Fall back to the invoice date if that is all there is. Beware of two-digit years and of dates printed in DD/MM/YYYY order — use surrounding context to decide.
+- service_date: the date the work was PERFORMED, as YYYY-MM-DD.
+  A service invoice usually carries several dates. Take the one next to labels like "Date", "Service Date", "Invoice Date", "Date In", "Closed", or "Completed". Where both an opened and a closed date appear, use the closed one.
+  Ignore dates that are not when the work happened: "Next service due", "Return by", warranty expiry, a printed-on timestamp in a footer, the customer's date of birth, and any date attached to a recommendation for future work.
+  If only a two-digit year is printed, expand it to the obvious century.
+- service_date_raw: that same date copied EXACTLY as printed, character for character — "03/04/24", "MAR 4 2024", whatever is on the page. Do not reformat it. This is a safety net for when the conversion above goes wrong, so it matters even when service_date looks fine.
 - mileage: the odometer reading at the time of service, as a plain integer with no separators. Receipts label this "Odometer", "Mileage", "Miles", "ODO", or "In/Out". If both an in and an out reading appear, use the higher one.
 - vendor: the shop or dealership name.
 - total_cost: the invoice total, if printed.
@@ -72,6 +77,7 @@ function responseSchema(itemKeys) {
     properties: {
       is_service_record: { type: 'boolean' },
       service_date: { type: 'string', description: 'YYYY-MM-DD' },
+      service_date_raw: { type: 'string', description: 'the date exactly as printed on the page' },
       mileage: { type: 'integer' },
       vendor: { type: 'string' },
       total_cost: { type: 'number' },
@@ -101,6 +107,7 @@ function responseSchema(itemKeys) {
     propertyOrdering: [
       'is_service_record',
       'service_date',
+      'service_date_raw',
       'mileage',
       'vendor',
       'total_cost',
@@ -299,6 +306,15 @@ export async function extractReceipt({ image, mimeType, itemKeys } = {}) {
 export function normaliseExtraction(raw, itemKeys = DEFAULT_ITEM_KEYS) {
   const allowed = new Set(itemKeys)
 
+  // Three chances at the date, most trusted first. The old code accepted only a
+  // perfectly zero-padded YYYY-MM-DD and dropped everything else on the floor,
+  // which is why so many records came back undated.
+  const resolved = resolveServiceDate({
+    isoValue: raw?.service_date,
+    rawValue: raw?.service_date_raw,
+    fullText: raw?.raw_text,
+  })
+
   const lineItems = []
   for (const item of Array.isArray(raw?.line_items) ? raw.line_items : []) {
     const key = allowed.has(item?.item_key) ? item.item_key : 'other'
@@ -319,7 +335,8 @@ export function normaliseExtraction(raw, itemKeys = DEFAULT_ITEM_KEYS) {
 
   return {
     isServiceRecord: raw?.is_service_record !== false,
-    serviceDate: isoDate(raw?.service_date),
+    serviceDate: resolved.date,
+    serviceDateSource: resolved.source,
     mileage: positiveInteger(raw?.mileage),
     vendor: typeof raw?.vendor === 'string' ? raw.vendor.trim() || null : null,
     totalCost: positiveNumber(raw?.total_cost),
@@ -349,16 +366,3 @@ function positiveInteger(value) {
   return n > 2_000_000 ? null : Math.round(n)
 }
 
-/** Only accepts a real YYYY-MM-DD that is not absurdly far from the present. */
-function isoDate(value) {
-  if (typeof value !== 'string') return null
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim())
-  if (!m) return null
-
-  const [, y, mo, d] = m.map(Number)
-  const date = new Date(y, mo - 1, d)
-  if (date.getFullYear() !== y || date.getMonth() !== mo - 1 || date.getDate() !== d) return null
-  if (y < 1950 || y > new Date().getFullYear() + 1) return null
-
-  return value.trim()
-}

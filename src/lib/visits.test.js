@@ -38,9 +38,7 @@ describe('grouping records into visits', () => {
     expect(visits).toHaveLength(2)
   })
 
-  it('uses receipt_group over the natural key, so a multi-page invoice is one visit', () => {
-    // Page 2 of an invoice may carry no date or odometer of its own; the group
-    // id is what keeps it attached.
+  it('uses receipt_group to attach a page that has no date or odometer of its own', () => {
     const visits = groupIntoVisits([
       record({ receipt_group: 'abc', service_date: '2024-03-03', mileage_at_service: 84210 }),
       record({ receipt_group: 'abc', service_date: null, mileage_at_service: null, vendor: null }),
@@ -50,6 +48,19 @@ describe('grouping records into visits', () => {
     expect(visits[0].date).toBe('2024-03-03')
     expect(visits[0].mileage).toBe(84210)
     expect(visits[0].vendor).toBe("Dave's Auto")
+  })
+
+  it('merges pages scanned before grouping existed, without a migration', () => {
+    // Each page got its own receipt_group back then. The natural key still
+    // recognises them as one trip to the shop.
+    const visits = groupIntoVisits([
+      record({ receipt_group: 'one', service_type: 'oil_change' }),
+      record({ receipt_group: 'two', service_type: 'brake_pads' }),
+      record({ receipt_group: 'three', service_type: 'tires_tread' }),
+    ])
+
+    expect(visits).toHaveLength(1)
+    expect(visits[0].records).toHaveLength(3)
   })
 
   it('separates same-day visits to different shops', () => {
