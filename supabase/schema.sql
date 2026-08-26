@@ -217,6 +217,32 @@ create trigger service_records_sync_mileage
   for each row execute function public.sync_vehicle_mileage();
 
 -- ---------------------------------------------------------------------------
+-- Grants
+-- ---------------------------------------------------------------------------
+-- Two independent gates stand between a request and a row, and both must pass:
+--
+--   GRANT  may this role touch the table at all? Failing it raises
+--          "permission denied for table vehicles".
+--   RLS    which rows within it? Failing it returns nothing on a read, or
+--          "new row violates row-level security policy" on a write.
+--
+-- Supabase usually applies default privileges to new tables in `public`, but
+-- that depends on which role created them and is not something to rely on, so
+-- these are explicit. GRANT is idempotent, so re-running this file is safe.
+grant usage on schema public to anon, authenticated;
+
+grant select, insert, update, delete on public.vehicles              to authenticated;
+grant select, insert, update, delete on public.service_records       to authenticated;
+grant select, insert, update, delete on public.vehicle_service_rules to authenticated;
+
+-- Reference data is read-only: there is no policy permitting writes either way,
+-- but the grant says so too rather than leaving it to the policy alone.
+grant select on public.service_rules to authenticated;
+
+-- No grants to `anon`. Every table here requires a signed-in user, and the
+-- policies below are all scoped `to authenticated`.
+
+-- ---------------------------------------------------------------------------
 -- Row Level Security
 -- ---------------------------------------------------------------------------
 -- Turned on from day one even though there is one user. The multi-user future
