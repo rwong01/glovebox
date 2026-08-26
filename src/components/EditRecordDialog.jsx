@@ -70,7 +70,9 @@ function EditRecordForm({ open, onOpenChange, record, vehicleId, rules, onSaved 
     setBusy(true)
 
     const payload = {
-      service_date: form.service_date,
+      // Plenty of scanned pages carry no date. Null is honest; today's date
+      // would be a fabrication that skews the driving-pace estimate.
+      service_date: form.service_date || null,
       service_type: form.service_type,
       mileage_at_service: numberOrNull(form.mileage_at_service),
       cost: numberOrNull(form.cost),
@@ -138,7 +140,7 @@ function EditRecordForm({ open, onOpenChange, record, vehicleId, rules, onSaved 
         <div className="grid grid-cols-2 gap-3">
           <Field label="Date">
             {({ id }) => (
-              <Input id={id} type="date" required value={form.service_date} onChange={set('service_date')} />
+              <Input id={id} type="date" value={form.service_date} onChange={set('service_date')} />
             )}
           </Field>
           <Field label="Mileage">

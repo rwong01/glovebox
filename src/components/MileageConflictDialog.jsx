@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
 import { updateVehicle } from '../lib/db.js'
+import { formatDay } from '../lib/dates.js'
 import { formatMiles } from '../lib/format.js'
 import { Button } from './ui/Button.jsx'
 import { Dialog } from './ui/Dialog.jsx'
@@ -76,9 +77,19 @@ function MileageConflictForm({ open, onOpenChange, conflict, vehicle, onResolved
         </div>
 
         <p className="text-sm leading-relaxed text-muted">
-          A lower reading usually means one of two things: an older receipt being scanned out of
-          order, which is fine and needs nothing from you, or a misread digit. Nothing has been
-          overwritten.
+          {conflict.comparedWith?.date ? (
+            <>
+              This page is dated on or after {formatDay(conflict.comparedWith.date)}, your most
+              recent record, but reads lower than the odometer on file. An older receipt reading
+              lower would be perfectly normal — this one is not older, so it is most likely a
+              misread digit. Nothing has been overwritten.
+            </>
+          ) : (
+            <>
+              This is the newest record on file and it reads lower than the odometer, which usually
+              means a misread digit. Nothing has been overwritten.
+            </>
+          )}
         </p>
 
         <Field

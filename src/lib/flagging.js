@@ -262,14 +262,39 @@ export function resolveRule(rule, override) {
   return merged
 }
 
+/**
+ * Oldest first.
+ *
+ * Not every record has a date — a continuation page of a multi-page invoice
+ * often carries line items and nothing else. Treating an undated record as
+ * epoch zero would file a recent one at the very beginning of the history and
+ * let a decade-old record win as "most recent". Odometers only move one way,
+ * so mileage orders the undated ones instead.
+ */
+export function compareRecordsByRecency(a, b) {
+  const aDate = toDate(a?.service_date)
+  const bDate = toDate(b?.service_date)
+
+  if (aDate && bDate) {
+    const byDate = aDate.getTime() - bDate.getTime()
+    if (byDate !== 0) return byDate
+  }
+
+  const aMiles = Number(a?.mileage_at_service)
+  const bMiles = Number(b?.mileage_at_service)
+  if (Number.isFinite(aMiles) && Number.isFinite(bMiles) && aMiles !== bMiles) {
+    return aMiles - bMiles
+  }
+
+  // Nothing else separates them: prefer the dated record as the later one,
+  // since it is the one we can actually say something about.
+  if (aDate && !bDate) return 1
+  if (!aDate && bDate) return -1
+  return 0
+}
+
 function recordsForItem(records, itemKey) {
-  return records
-    .filter((r) => r?.service_type === itemKey)
-    .sort((a, b) => {
-      const byDate = (toDate(a.service_date)?.getTime() ?? 0) - (toDate(b.service_date)?.getTime() ?? 0)
-      if (byDate !== 0) return byDate
-      return (Number(a.mileage_at_service) || 0) - (Number(b.mileage_at_service) || 0)
-    })
+  return records.filter((r) => r?.service_type === itemKey).sort(compareRecordsByRecency)
 }
 
 /** Odometer reading at which a target will be reached, as a date. Null if never. */
@@ -314,6 +339,16 @@ function evaluateInterval(rule, records, ctx) {
   const lastMileage = Number.isFinite(Number(last.mileage_at_service))
     ? Number(last.mileage_at_service)
     : null
+
+  // A record with neither a date nor an odometer anchors nothing — there is no
+  // point to measure an interval from. Say so instead of producing a sentence
+  // with holes in it.
+  if (!lastDate && lastMileage == null) {
+    return unknownFlag(
+      rule,
+      `There is a ${rule.display_name.toLowerCase()} record on file, but it has no date or mileage to measure from. Add either one from the service log.`,
+    )
+  }
 
   // A future-dated record is a typo; clamping keeps the arithmetic sane rather
   // than reporting a negative age.
@@ -363,7 +398,10 @@ function evaluateInterval(rule, records, ctx) {
     dueDate = mileageRedDate // may be null when the car isn't moving
   }
 
+  // `lastAt` is null on an undated page, so every sentence below composes the
+  // "when" and the "where on the odometer" separately rather than assuming both.
   const lastAt = formatMonthYear(lastDate)
+  const at = lastAt ? ` ${lastAt}` : ''
   const atMileage = lastMileage != null ? ` at ${fmtInt(lastMileage)} mi` : ''
   // "Last done" is right for an oil change and wrong for tires, which are
   // fitted, or a battery, which is replaced. One optional column per rule
@@ -374,12 +412,12 @@ function evaluateInterval(rule, records, ctx) {
 
   if (status === STATUS.RED) {
     if (timeStatus === STATUS.RED && (mileStatus !== STATUS.RED || dueBasis === 'time')) {
-      reason = `${lastVerb} ${lastAt} — ${formatDuration(monthsSince)} ago, past the ${formatDurationAdjective(rule.red_months)} limit.`
+      reason = `${lastVerb}${at} — ${formatDuration(monthsSince)} ago, past the ${formatDurationAdjective(rule.red_months)} limit.`
       if (milesSince != null && mileStatus !== STATUS.RED) {
         detail = `Only ${fmtInt(milesSince)} miles since, but the clock got there first.`
       }
     } else {
-      reason = `${fmtInt(milesSince)} miles since the last one${atMileage ? ` (${lastAt}${atMileage})` : ` in ${lastAt}`} — past the ${fmtInt(rule.red_mileage)}-mile limit.`
+      reason = `${fmtInt(milesSince)} miles since the last one${lastAt || atMileage ? ` (${[lastAt, atMileage.trim()].filter(Boolean).join(' ')})` : ''} — past the ${fmtInt(rule.red_mileage)}-mile limit.`
       if (timeStatus && timeStatus !== STATUS.RED) {
         detail = `Still inside the ${formatDurationAdjective(rule.red_months)} window, but the miles got there first.`
       }
@@ -387,22 +425,22 @@ function evaluateInterval(rule, records, ctx) {
   } else if (status === STATUS.YELLOW) {
     const when = whenPhrase(dueDate, ctx.now)
     if (dueBasis === 'mileage' && redOdometer != null) {
-      reason = `${fmtInt(milesSince)} miles in since ${lastAt}. Due at ${fmtInt(redOdometer)} mi${when ? `, ${when} at your pace` : ''}.`
+      reason = `${fmtInt(milesSince)} miles in since${lastAt ? ` ${lastAt}` : ` ${fmtInt(lastMileage)} mi`}. Due at ${fmtInt(redOdometer)} mi${when ? `, ${when} at your pace` : ''}.`
     } else if (rule.red_months != null) {
-      reason = `${lastVerb} ${lastAt}${atMileage}. The ${formatDurationAdjective(rule.red_months)} mark lands ${when ?? 'soon'}.`
+      reason = `${lastVerb}${at}${atMileage}. The ${formatDurationAdjective(rule.red_months)} mark lands ${when ?? 'soon'}.`
     } else {
-      reason = `${lastVerb} ${lastAt}${atMileage} — coming up on the recommended interval.`
+      reason = `${lastVerb}${at}${atMileage} — coming up on the recommended interval.`
     }
   } else {
     const when = whenPhrase(dueDate, ctx.now)
     const target = dueBasis === 'mileage' && redOdometer != null ? ` at about ${fmtInt(redOdometer)} mi` : ''
     if (when) {
-      reason = `${lastVerb} ${lastAt}${atMileage}. Next due ${when}${target}.`
+      reason = `${lastVerb}${at}${atMileage}. Next due ${when}${target}.`
     } else if (dueBasis === 'mileage') {
       // Pace is zero: the odometer target exists but will never arrive.
-      reason = `${lastVerb} ${lastAt}${atMileage}. Due at ${fmtInt(redOdometer)} mi — nothing owing while the car sits.`
+      reason = `${lastVerb}${at}${atMileage}. Due at ${fmtInt(redOdometer)} mi — nothing owing while the car sits.`
     } else {
-      reason = `${lastVerb} ${lastAt}${atMileage}. Nothing due yet.`
+      reason = `${lastVerb}${at}${atMileage}. Nothing due yet.`
     }
   }
 
@@ -488,7 +526,9 @@ function evaluateMeasurable(rule, records, ctx) {
     dueDate = projectDateForOdometer(dueOdometer, ctx)
   }
 
+  // "in Mar 2024" where the sheet was dated, "" where it was not.
   const measuredAt = formatMonthYear(latest.date)
+  const measuredWhen = measuredAt ? ` in ${measuredAt}` : ''
   const shown = formatMeasurement(estimate, rule.unit)
   const redText = formatMeasurement(red, rule.unit)
   const yellowText = formatMeasurement(yellow, rule.unit)
@@ -502,18 +542,18 @@ function evaluateMeasurable(rule, records, ctx) {
     // rather than inventing a trend.
     const raw = formatMeasurement(latest.value, rule.unit)
     if (status === STATUS.RED) {
-      reason = `Measured ${raw} in ${measuredAt} — at or below the ${redText} replace line.`
+      reason = `Measured ${raw}${measuredWhen} — at or below the ${redText} replace line.`
     } else if (status === STATUS.YELLOW) {
-      reason = `Measured ${raw} in ${measuredAt} — under the ${yellowText} planning line.`
+      reason = `Measured ${raw}${measuredWhen} — under the ${yellowText} planning line.`
     } else {
-      reason = `Measured ${raw} in ${measuredAt}, comfortably above the ${yellowText} line.`
+      reason = `Measured ${raw}${measuredWhen}, comfortably above the ${yellowText} line.`
     }
     detail =
       points.length === 1
         ? 'Only one measurement on file, so there is no wear rate yet — a second one will start the projection.'
         : 'All readings were taken at the same odometer, so there is no wear rate yet.'
   } else if (status === STATUS.RED) {
-    reason = `About ${shown} left — at or below the ${redText} replace line. Last measured ${formatMeasurement(latest.value, rule.unit)} in ${measuredAt}.`
+    reason = `About ${shown} left — at or below the ${redText} replace line. Last measured ${formatMeasurement(latest.value, rule.unit)}${measuredWhen}.`
     detail = `Wearing about ${wearText}.`
   } else if (status === STATUS.YELLOW) {
     const when = whenPhrase(dueDate, ctx.now)
@@ -561,13 +601,15 @@ function evaluateQualitative(rule, records, ctx) {
 
   let status = VERDICT_STATUS[last.verdict]
   const at = formatMonthYear(lastDate)
+  // An undated inspection sheet still carries a verdict worth reporting.
+  const inspected = at ? `Inspected ${at}` : 'Inspected (no date on the record)'
   let reason
   let detail = null
 
   if (status === STATUS.RED) {
-    reason = `Inspected ${at}: at or below the stamped minimum thickness. This is the replace-now call.`
+    reason = `${inspected}: at or below the stamped minimum thickness. This is the replace-now call.`
   } else if (status === STATUS.YELLOW) {
-    reason = `Inspected ${at}: measuring near the stamped minimum. Worth pricing before the next brake job.`
+    reason = `${inspected}: measuring near the stamped minimum. Worth pricing before the next brake job.`
   } else {
     const stale =
       monthsSince >= QUALITATIVE_STALE_MONTHS ||
@@ -577,9 +619,10 @@ function evaluateQualitative(rule, records, ctx) {
       // shelf life, and this is exactly the case a static log would miss.
       status = STATUS.YELLOW
       const since = milesSince != null ? ` and ${fmtInt(milesSince)} miles` : ''
-      reason = `Last inspected ${at} and within spec then — but that was ${formatDuration(monthsSince)}${since} ago. Worth a fresh look.`
+      const elapsed = at ? `${formatDuration(monthsSince)}${since}` : `${fmtInt(milesSince)} miles`
+      reason = `Last inspected${at ? ` ${at}` : ''} and within spec then — but that was ${elapsed} ago. Worth a fresh look.`
     } else {
-      reason = `Inspected ${at}: within spec.`
+      reason = `${inspected}: within spec.`
     }
   }
 

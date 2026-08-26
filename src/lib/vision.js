@@ -12,7 +12,19 @@
 import { BRAKE_ROTOR_KEYS, DEFAULT_ITEM_KEYS, VERDICTS, toCanonicalMeasurement } from './serviceItems.js'
 
 const API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models'
-const DEFAULT_MODEL = 'gemini-2.5-flash'
+
+/**
+ * Flash-Lite, because this workload is exactly what it is for: high-volume,
+ * low-latency document parsing where the job is transcription rather than
+ * reasoning. It also carries a far larger free-tier daily allowance than the
+ * general-purpose Flash models, which matters when the first thing you do with
+ * this app is scan a shoebox.
+ *
+ * Override with GEMINI_MODEL. `gemini-3.5-flash-lite` is the newer sibling and
+ * is explicitly tuned for document parsing; run `npm run models` to see what
+ * your key can actually reach.
+ */
+const DEFAULT_MODEL = 'gemini-3.1-flash-lite'
 
 /** Leaves headroom under the function's 60s ceiling to still return an error. */
 const REQUEST_TIMEOUT_MS = 50_000
@@ -49,7 +61,13 @@ Field guidance:
 
 - raw_text: a faithful transcription of every legible line on the document, preserving the order it appears in.
 - is_service_record: false if this is not a vehicle service document at all — a blurry surface, a grocery receipt, a photo of a person.
-- confidence: 0 to 1, how legible the document was overall.`
+- confidence: 0 to 1, how legible the document was overall.
+
+Multi-page documents. One invoice often runs to several pages, and only the first carries the header:
+
+- document_ref: the invoice, repair order, work order or RO number exactly as printed. This is what identifies one document across its pages, so capture it even when it appears only in a small header or footer.
+- page_number and page_count: if the page carries a marker like "Page 2 of 3", report both numbers. Omit both if there is no such marker.
+- A continuation page frequently has NO date, NO odometer and NO shop name. That is normal and expected — omit those fields rather than guessing or carrying over a value you cannot actually see on this page. The caller reassembles the document from the pages.`
 
 function responseSchema(itemKeys) {
   return {
@@ -60,6 +78,9 @@ function responseSchema(itemKeys) {
       mileage: { type: 'integer' },
       vendor: { type: 'string' },
       total_cost: { type: 'number' },
+      document_ref: { type: 'string', description: 'invoice / RO / work order number as printed' },
+      page_number: { type: 'integer' },
+      page_count: { type: 'integer' },
       line_items: {
         type: 'array',
         items: {
@@ -86,6 +107,9 @@ function responseSchema(itemKeys) {
       'mileage',
       'vendor',
       'total_cost',
+      'document_ref',
+      'page_number',
+      'page_count',
       'line_items',
       'raw_text',
       'confidence',
@@ -113,6 +137,40 @@ export function parseImageInput(image) {
 
 function badRequest(message) {
   return Object.assign(new Error(message), { statusCode: 400 })
+}
+
+/**
+ * Reads a rate-limit rejection.
+ *
+ * The two kinds are worth telling apart, because only one of them is worth
+ * waiting for. A per-minute limit clears in seconds and the caller can simply
+ * pause the queue; a per-day limit does not clear until the quota window
+ * resets, so backing off just burns the afternoon.
+ *
+ * Gemini attaches a RetryInfo detail with a delay like "38s"; when it is
+ * absent, a minute is a reasonable stand-in for a per-minute limit.
+ */
+export function describeQuota(parsedBody, fallbackMessage) {
+  const details = parsedBody?.error?.details
+  let retryAfter = null
+
+  if (Array.isArray(details)) {
+    for (const detail of details) {
+      const match = /^([\d.]+)s$/.exec(detail?.retryDelay ?? '')
+      if (match) retryAfter = Math.ceil(Number(match[1]))
+    }
+  }
+
+  const text = `${fallbackMessage} ${JSON.stringify(details ?? '')}`
+  const daily = /per\s*day|PerDay|daily/i.test(text)
+
+  return {
+    scope: daily ? 'daily' : 'per-minute',
+    retryAfter: daily ? null : (retryAfter ?? 60),
+    message: daily
+      ? "You've used up today's Gemini quota. It resets on Google's daily schedule — the rest of your pages will have to wait until then."
+      : 'Gemini is rate limiting — too many pages too quickly. Waiting a moment and carrying on.',
+  }
 }
 
 /**
@@ -163,7 +221,10 @@ export async function extractReceipt({ image, mimeType, itemKeys } = {}) {
           },
         ],
         generationConfig: {
-          // Reading a document is transcription, not creative writing.
+          // Reading a document is transcription, not creative writing. Some
+          // Flash-Lite models ignore temperature/top-K/top-P and use their own
+          // defaults; sending it is harmless there and matters on models that
+          // do honour it.
           temperature: 0,
           responseMimeType: 'application/json',
           responseSchema: responseSchema(keys),
@@ -184,16 +245,25 @@ export async function extractReceipt({ image, mimeType, itemKeys } = {}) {
   if (!response.ok) {
     const body = await response.text().catch(() => '')
     let message = `Vision request failed (${response.status})`
+    let parsedBody = null
     try {
-      const parsedBody = JSON.parse(body)
+      parsedBody = JSON.parse(body)
       if (parsedBody?.error?.message) message = parsedBody.error.message
     } catch {
       if (body) message = body.slice(0, 300)
     }
-    // 429 and 5xx are worth retrying; 400/403 are not.
-    throw Object.assign(new Error(message), {
-      statusCode: response.status === 429 ? 429 : response.status >= 500 ? 502 : 400,
-    })
+
+    if (response.status === 429) {
+      const quota = describeQuota(parsedBody, message)
+      throw Object.assign(new Error(quota.message), {
+        statusCode: 429,
+        retryAfter: quota.retryAfter,
+        quotaScope: quota.scope,
+      })
+    }
+
+    // 5xx is worth retrying; 400/403 is not.
+    throw Object.assign(new Error(message), { statusCode: response.status >= 500 ? 502 : 400 })
   }
 
   const payload = await response.json()
@@ -256,6 +326,10 @@ export function normaliseExtraction(raw, itemKeys = DEFAULT_ITEM_KEYS) {
     mileage: positiveInteger(raw?.mileage),
     vendor: typeof raw?.vendor === 'string' ? raw.vendor.trim() || null : null,
     totalCost: positiveNumber(raw?.total_cost),
+    // What ties the pages of one invoice together.
+    documentRef: typeof raw?.document_ref === 'string' ? raw.document_ref.trim() || null : null,
+    pageNumber: positiveInteger(raw?.page_number),
+    pageCount: positiveInteger(raw?.page_count),
     lineItems,
     rawText: typeof raw?.raw_text === 'string' ? raw.raw_text.trim() : '',
     confidence: typeof raw?.confidence === 'number' ? clamp(raw.confidence, 0, 1) : null,

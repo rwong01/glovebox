@@ -94,7 +94,13 @@ create index if not exists vehicles_owner_id_idx on public.vehicles (owner_id);
 create table if not exists public.service_records (
   id                  uuid        primary key default gen_random_uuid(),
   vehicle_id          uuid        not null references public.vehicles (id) on delete cascade,
-  service_date        date        not null,
+
+  -- Nullable on purpose. Plenty of scanned pages carry no date at all: the
+  -- continuation pages of a multi-page invoice usually have only line items.
+  -- Substituting today's date to satisfy a NOT NULL would be worse than an
+  -- absent one — it would claim a 2019 oil change happened this morning and
+  -- poison the driving-pace estimate every projection is built on.
+  service_date        date,
   mileage_at_service  integer     check (mileage_at_service is null or mileage_at_service >= 0),
 
   -- Canonical key. Anything the shop wrote that does not map to a known item
@@ -124,6 +130,10 @@ create table if not exists public.service_records (
   created_at          timestamptz not null default now(),
   updated_at          timestamptz not null default now()
 );
+
+-- Same migration-safety idea as above: an existing database created when this
+-- column was NOT NULL needs the constraint dropped.
+alter table public.service_records alter column service_date drop not null;
 
 create index if not exists service_records_vehicle_idx
   on public.service_records (vehicle_id, service_date desc);
