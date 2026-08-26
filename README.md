@@ -127,9 +127,11 @@ only the transcription is stored, so nothing but text reaches the database.
 `src/lib/flagging.js` is the heart of the app and is pure — `now` is injected,
 so all of the below is covered by tests rather than by waiting a year.
 
-**Driving pace.** Every dated odometer reading becomes an observation. Pace is
-measured across the widest span in the last two years, falling back to full
-history, then to a flat 1,000 mi/month assumption that the UI labels as assumed.
+**Driving pace.** Every dated odometer reading becomes an observation — from a
+scanned receipt's `mileage_at_service`, or from a manually logged mileage
+reading with nothing else on it (see below). Pace is measured across the
+widest span in the last two years, falling back to full history, then to a
+flat 1,000 mi/month assumption that the UI labels as assumed.
 
 Two deliberate choices here:
 
@@ -158,6 +160,17 @@ yellow, because "fine in 2022" is not evidence about today.
 **Items with no history read as `unknown`, not red.** A new account has no
 records for anything, and twelve red rows on day one would be both wrong and
 useless.
+
+**Logging mileage without a service.** Setup never asks for a starting
+odometer — there is nothing to calibrate against yet, and a raw number with no
+date attached can't feed the pace estimate anyway. Instead, "Log mileage" adds
+a bare, dated odometer reading (`item_key: odometer_reading`, type `other`, so
+it is never itself flagged). Say the last oil change was 12 months and 130,000
+miles ago and today's reading is logged at 140,000: that is a second, dated
+observation, so pace becomes a real 10,000 mi / 12 mo instead of the 1,000
+mi/month default, `currentMileage` becomes 140,000 outright, and every
+interval item re-evaluates against both — on the assumption that nothing else
+happened in between, since a real visit would show up as its own dated record.
 
 ### Tuning the numbers
 
