@@ -39,9 +39,11 @@ Field guidance:
 - Inspection sheets record measurements even where no work was done. Capture these; they are the most valuable thing on the page.
   - measured_value and measured_unit: report the number EXACTLY AS PRINTED and name the unit you read it in — "32nds" for a reading like 8/32 or 8-32nds, "mm" for millimetres, "in" for decimal inches. Do NOT convert between units; the caller handles that.
   - Tire tread is normally in 32nds, brake pad thickness normally in millimetres, but honour whatever the sheet actually uses.
-  - When several tires are listed separately, report the LOWEST reading on item_key "tires_tread" — the worst corner is the one that governs.
-  - A tire tread reading belongs on item_key "tires_tread"; new tires being fitted belongs on "tires_age".
-  - Brakes are never one reading: front and rear wear at different rates and get serviced separately, so a front number and a rear number are two distinct line items, not one merged into the other. Use item_key "brake_pads_front" / "brake_pads_rear" for pad thickness and "brake_rotors_front" / "brake_rotors_rear" for the rotor verdict, matching whichever axle that line is actually about. Within one axle, if left and right are both printed, report the lower of the two. If a brake reading is printed with no axle stated anywhere on the page and you cannot tell which one it is, tag that line "other" and keep the wording in "description" — do not guess an axle.
+  - Front and rear wear at different rates — for tires and for brakes alike — and either axle can be serviced on its own, so never merge the two into one worst-of-the-car reading. Split every axle-based item this way:
+    - Tread depth: item_key "tires_tread_front" / "tires_tread_rear". New tires being fitted: item_key "tires_age_front" / "tires_age_rear".
+    - Pad thickness: item_key "brake_pads_front" / "brake_pads_rear". Rotor verdict: item_key "brake_rotors_front" / "brake_rotors_rear".
+    - Within one axle, if left and right are both printed (two tires, or two pads), report the lower of the two — the worst corner on that axle is the one that governs.
+    - If a reading is printed with no axle stated anywhere on the page and you truly cannot tell which one it is, tag that line "other" and keep the wording in "description" — do not guess an axle.
 
 - verdict: only for item_key "brake_rotors_front" or "brake_rotors_rear". Rotors have no universal thickness spec, so what matters is the shop's written call. Map it to within_spec, near_minimum, or below_minimum. Omit if the sheet says nothing about rotors.
 

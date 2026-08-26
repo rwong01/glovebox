@@ -307,21 +307,22 @@ create policy "rules are readable" on public.service_rules
   using (true);
 
 -- ===========================================================================
--- Migration: brake_pads / brake_rotors split into front/rear
+-- Migration: axle items split into front/rear
 -- ===========================================================================
--- A single "Brake Pads" flag could not say which axle needed the work, which
--- is exactly the number a person acting on it needs. Front and rear now track
--- (and flag) separately as brake_pads_front/rear and brake_rotors_front/rear,
+-- A single "Brake Pads" (or "Tire Tread") flag could not say which axle
+-- needed the work, which is exactly the number a person acting on it needs.
+-- Front and rear now track — and flag — separately: brake_pads_front/rear,
+-- brake_rotors_front/rear, tires_tread_front/rear, tires_age_front/rear,
 -- seeded below.
 --
--- The old two rows are dropped here, but only when nothing still references
--- them — the foreign key on service_records.service_type would reject the
--- delete otherwise. If you already have brake history logged under the old
--- keys, this is a no-op and those rows keep working exactly as before; they
--- just do not get the front/rear split until re-logged (or backfilled by
--- hand) under the new item_keys.
+-- The old rows are dropped here, but only when nothing still references them
+-- — the foreign key on service_records.service_type would reject the delete
+-- otherwise. If you already have history logged under an old key, this is a
+-- no-op and that row keeps working exactly as before; it just does not get
+-- the front/rear split until re-logged (or backfilled by hand) under the new
+-- item_keys.
 delete from public.service_rules
- where item_key in ('brake_pads', 'brake_rotors')
+ where item_key in ('brake_pads', 'brake_rotors', 'tires_tread', 'tires_age')
    and not exists (
      select 1 from public.service_records sr where sr.service_type = service_rules.item_key
    );
@@ -379,14 +380,24 @@ insert into public.service_rules (
    'miles', 50, 'flushed',
    'Time matters more than mileage here — brake fluid absorbs moisture from the air whether or not you drive.'),
 
-  ('tires_tread', 'Tire Tread', 'measurable',
+  ('tires_tread_front', 'Tire Tread (Front)', 'measurable',
    null, null,  null, null, null, null,  4, 2,
    '32nds of an inch', 60, 'measured',
+   'New tires start around 10-11/32. The federal legal minimum is 2/32, which is where red sits; wet-weather grip falls off well before that, which is what yellow at 4/32 is for. Front tires usually wear faster on a front-wheel-drive car.'),
+
+  ('tires_tread_rear', 'Tire Tread (Rear)', 'measurable',
+   null, null,  null, null, null, null,  4, 2,
+   '32nds of an inch', 61, 'measured',
    'New tires start around 10-11/32. The federal legal minimum is 2/32, which is where red sits; wet-weather grip falls off well before that, which is what yellow at 4/32 is for.'),
 
-  ('tires_age', 'Tire Age', 'interval',
+  ('tires_age_front', 'Tire Age (Front)', 'interval',
    null, 72,  null, 60, null, 72,  null, null,
    'months', 70, 'fitted',
+   'An age cap independent of mileage. This is what catches a low-mileage car whose tires still look fine but have hardened with age. Recorded from the date the tires were fitted. Only offset from the rear if the axles were shod separately rather than as a full set.'),
+
+  ('tires_age_rear', 'Tire Age (Rear)', 'interval',
+   null, 72,  null, 60, null, 72,  null, null,
+   'months', 71, 'fitted',
    'An age cap independent of mileage. This is what catches a low-mileage car whose tires still look fine but have hardened with age. Recorded from the date the tires were fitted.'),
 
   ('cabin_air_filter', 'Cabin Air Filter', 'interval',

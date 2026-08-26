@@ -19,8 +19,10 @@ export const DEFAULT_ITEM_KEYS = [
   'brake_rotors_front',
   'brake_rotors_rear',
   'brake_fluid',
-  'tires_tread',
-  'tires_age',
+  'tires_tread_front',
+  'tires_tread_rear',
+  'tires_age_front',
+  'tires_age_rear',
   'cabin_air_filter',
   'engine_air_filter',
   'coolant',
@@ -31,15 +33,16 @@ export const DEFAULT_ITEM_KEYS = [
 
 /** The unit each measurable item is stored in. Everything else converts to this. */
 export const CANONICAL_UNITS = {
-  tires_tread: '32nds',
+  tires_tread_front: '32nds',
+  tires_tread_rear: '32nds',
   brake_pads_front: 'mm',
   brake_pads_rear: 'mm',
 }
 
 /**
- * Front and rear brakes wear at different rates and get replaced separately,
- * so each axle is tracked — and flagged — as its own item rather than one
- * merged "brake pads" reading that can't say which end of the car it means.
+ * Front and rear wear at different rates and can be serviced independently —
+ * one axle at a time — so each is tracked and flagged as its own item rather
+ * than one merged reading that can't say which end of the car it means.
  */
 export const BRAKE_PAD_KEYS = ['brake_pads_front', 'brake_pads_rear']
 
