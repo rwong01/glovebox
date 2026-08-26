@@ -19,8 +19,12 @@ export default function Upload() {
   const vehicle = vehicles.find((v) => v.id === vehicleId)
 
   // Memoised so the uploader's background pipeline effect is not restarted on
-  // every render of this page.
-  const itemKeys = useMemo(() => rules.map((r) => r.item_key), [rules])
+  // every render of this page. `odometer_reading` is excluded on purpose —
+  // it's a manual log entry, never something a scanned line item should map to.
+  const itemKeys = useMemo(
+    () => rules.filter((r) => r.item_key !== 'odometer_reading').map((r) => r.item_key),
+    [rules],
+  )
 
   const onSaved = useCallback((result) => {
     setSavedCount((n) => n + 1)

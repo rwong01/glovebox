@@ -9,7 +9,10 @@
 
 /**
  * Fallback list, used when the caller does not supply the keys it loaded from
- * `service_rules`. Kept in sync with the seed in supabase/schema.sql.
+ * `service_rules`. Kept in sync with the seed in supabase/schema.sql — with
+ * one deliberate exception: `odometer_reading` is a manual-only log entry, not
+ * something a receipt line item should ever be mapped to, so it is left out
+ * of both this list and the live item keys passed to the vision model.
  */
 export const DEFAULT_ITEM_KEYS = [
   'oil_change',

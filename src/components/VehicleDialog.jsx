@@ -7,14 +7,13 @@ import { Dialog } from './ui/Dialog.jsx'
 import { Field, Input } from './ui/Field.jsx'
 import { ErrorNote } from './ui/States.jsx'
 
-const BLANK = { nickname: '', make: '', model: '', year: '', current_mileage: '' }
+const BLANK = { nickname: '', make: '', model: '', year: '' }
 
 const toForm = (vehicle) => ({
   nickname: vehicle.nickname ?? '',
   make: vehicle.make ?? '',
   model: vehicle.model ?? '',
   year: vehicle.year ?? '',
-  current_mileage: vehicle.current_mileage ?? '',
 })
 
 /** Add or edit a vehicle. Pass `vehicle` to edit, omit it to create. */
@@ -44,7 +43,6 @@ function VehicleDialogForm({ open, onOpenChange, vehicle, onSaved, onDeleted }) 
       make: form.make.trim() || null,
       model: form.model.trim() || null,
       year: form.year ? Number(form.year) : null,
-      current_mileage: form.current_mileage ? Number(form.current_mileage) : 0,
     }
 
     try {
@@ -125,39 +123,20 @@ function VehicleDialogForm({ open, onOpenChange, vehicle, onSaved, onDeleted }) 
           </Field>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Year">
-            {({ id }) => (
-              <Input
-                id={id}
-                type="number"
-                inputMode="numeric"
-                min={1900}
-                max={2100}
-                value={form.year}
-                onChange={set('year')}
-                placeholder="2016"
-              />
-            )}
-          </Field>
-          <Field
-            label="Current mileage"
-            hint={vehicle ? 'Raised automatically as newer records are logged.' : undefined}
-          >
-            {({ id, describedBy }) => (
-              <Input
-                id={id}
-                aria-describedby={describedBy}
-                type="number"
-                inputMode="numeric"
-                min={0}
-                value={form.current_mileage}
-                onChange={set('current_mileage')}
-                placeholder="84210"
-              />
-            )}
-          </Field>
-        </div>
+        <Field label="Year">
+          {({ id }) => (
+            <Input
+              id={id}
+              type="number"
+              inputMode="numeric"
+              min={1900}
+              max={2100}
+              value={form.year}
+              onChange={set('year')}
+              placeholder="2016"
+            />
+          )}
+        </Field>
 
         {confirmingDelete ? (
           <p className="rounded-lg border border-bad/30 bg-bad-soft px-3 py-2 text-sm text-bad-text">

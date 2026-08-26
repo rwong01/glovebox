@@ -60,7 +60,12 @@ function EditRecordForm({ open, onOpenChange, record, vehicleId, rules, onSaved 
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
 
-  const trackable = useMemo(() => rules.filter((r) => r.item_key !== 'other'), [rules])
+  // 'other' has its own hardcoded option below; 'odometer_reading' isn't a
+  // service at all and gets its own dedicated "Log mileage" flow instead.
+  const trackable = useMemo(
+    () => rules.filter((r) => r.item_key !== 'other' && r.item_key !== 'odometer_reading'),
+    [rules],
+  )
   const selected = rules.find((r) => r.item_key === form.service_type)
   const set = (key) => (event) => setForm((f) => ({ ...f, [key]: event.target.value }))
 
