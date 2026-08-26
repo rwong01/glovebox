@@ -434,6 +434,17 @@ insert into public.service_rules (
    'months', 120, 'replaced',
    'Time only; there is no mileage relationship. At yellow, a voltage or load test is a better move than an automatic replacement.'),
 
+  -- A bare odometer reading, logged by hand with no service attached. This is
+  -- the only way `current_mileage` moves outside of a scanned receipt — there
+  -- is no direct "set current mileage" field, because a number with no date
+  -- can't calibrate the driving-pace estimate the way a dated reading can.
+  -- Type 'other' so it is never flagged and excluded from the receipt-scan
+  -- item list (nothing on a receipt should ever map to it).
+  ('odometer_reading', 'Mileage Log', 'other',
+   null, null,  null, null, null, null,  null, null,
+   'miles', 5, null,
+   'A manual odometer reading with no service performed. Feeds the driving-pace estimate and the current-mileage ratchet, same as a dated line item would.'),
+
   -- Catch-all so an unrecognised line item on a receipt is still stored,
   -- searchable, and attributable, rather than being dropped on the floor.
   -- Type 'other' is never flagged.

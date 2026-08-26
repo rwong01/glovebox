@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
-import { ArrowLeft, CalendarClock, Camera, Plus, SlidersHorizontal } from 'lucide-react'
+import { ArrowLeft, CalendarClock, Camera, Gauge, Plus, SlidersHorizontal } from 'lucide-react'
 
 import { AppShell } from '../components/AppShell.jsx'
 import { EditRecordDialog } from '../components/EditRecordDialog.jsx'
 import { RepairDatesDialog } from '../components/RepairDatesDialog.jsx'
 import { FlagList } from '../components/FlagList.jsx'
+import { LogMileageDialog } from '../components/LogMileageDialog.jsx'
 import { ServiceLogTable } from '../components/ServiceLogTable.jsx'
 import { VehicleDialog } from '../components/VehicleDialog.jsx'
 import { Button } from '../components/ui/Button.jsx'
@@ -24,6 +25,7 @@ export default function VehicleDetail() {
   const [recordOpen, setRecordOpen] = useState(false)
   const [vehicleOpen, setVehicleOpen] = useState(false)
   const [repairOpen, setRepairOpen] = useState(false)
+  const [mileageOpen, setMileageOpen] = useState(false)
 
   const vehicle = vehicles.find((v) => v.id === vehicleId)
   const vehicleRecords = useMemo(
@@ -96,14 +98,24 @@ export default function VehicleDetail() {
           </p>
         </div>
 
-        <Button
-          size="icon"
-          variant="ghost"
-          aria-label="Edit vehicle"
-          onClick={() => setVehicleOpen(true)}
-        >
-          <SlidersHorizontal size={18} aria-hidden="true" />
-        </Button>
+        <div className="flex shrink-0 items-center gap-1">
+          <Button
+            size="icon"
+            variant="ghost"
+            aria-label="Log mileage"
+            onClick={() => setMileageOpen(true)}
+          >
+            <Gauge size={18} aria-hidden="true" />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            aria-label="Edit vehicle"
+            onClick={() => setVehicleOpen(true)}
+          >
+            <SlidersHorizontal size={18} aria-hidden="true" />
+          </Button>
+        </div>
       </header>
 
       {repairable > 0 ? (
@@ -177,6 +189,13 @@ export default function VehicleDetail() {
         vehicle={vehicle}
         onSaved={refresh}
         onDeleted={refresh}
+      />
+
+      <LogMileageDialog
+        open={mileageOpen}
+        onOpenChange={setMileageOpen}
+        vehicleId={vehicle.id}
+        onSaved={refresh}
       />
     </AppShell>
   )
