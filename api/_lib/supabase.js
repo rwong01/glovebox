@@ -71,7 +71,18 @@ export async function requireUser(req) {
 export function sendError(res, err) {
   const status = err?.statusCode && err.statusCode >= 400 && err.statusCode < 600 ? err.statusCode : 500
   if (status >= 500) console.error(err)
-  return res.status(status).json({ error: err?.message || 'Something went wrong.' })
+
+  const payload = { error: err?.message || 'Something went wrong.' }
+
+  // Rate limits carry the two things the client needs to keep a long scanning
+  // batch moving: how long to wait, and whether waiting will help at all.
+  if (Number.isFinite(err?.retryAfter)) {
+    payload.retryAfter = err.retryAfter
+    res.setHeader('Retry-After', String(err.retryAfter))
+  }
+  if (err?.quotaScope) payload.quotaScope = err.quotaScope
+
+  return res.status(status).json(payload)
 }
 
 export function methodGuard(req, res, allowed = 'POST') {

@@ -13,6 +13,7 @@
  */
 import { randomUUID } from 'node:crypto'
 
+import { detectMileageConflict } from '../src/lib/mileage.js'
 import { methodGuard, requireUser, sendError } from './_lib/supabase.js'
 
 export default async function handler(req, res) {
@@ -37,9 +38,26 @@ export default async function handler(req, res) {
 
     if (vehicleError || !vehicle) throw bad('That vehicle is not in your garage.', 404)
 
-    const serviceDate = extraction.serviceDate || todayISO()
+    // Read the newest dated record BEFORE inserting, so the rows about to be
+    // written are not their own point of comparison.
+    const { data: newestOnFile } = await supabase
+      .from('service_records')
+      .select('service_date, mileage_at_service')
+      .eq('vehicle_id', vehicle.id)
+      .not('service_date', 'is', null)
+      .not('mileage_at_service', 'is', null)
+      .order('service_date', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    // No date is a normal outcome, not a defect: continuation pages of a
+    // multi-page invoice carry line items and nothing else. Storing null beats
+    // substituting today, which would date a 2019 oil change to this morning.
+    const serviceDate = extraction.serviceDate || null
     const mileage = Number.isFinite(extraction.mileage) ? extraction.mileage : null
-    const receiptGroup = randomUUID()
+
+    // Pages of one document share a group, so the client may pass one in.
+    const receiptGroup = isUuid(extraction.receiptGroup) ? extraction.receiptGroup : randomUUID()
 
     const rows = extraction.lineItems.map((item) => ({
       vehicle_id: vehicle.id,
@@ -63,29 +81,24 @@ export default async function handler(req, res) {
 
     if (insertError) throw bad(insertError.message, 400)
 
-    /*
-     * Mileage handling.
-     *
-     * A reading HIGHER than what is on file is new information and the database
-     * trigger has already applied it. A reading LOWER is ambiguous — it is
-     * either an older receipt from the backlog being scanned out of order, or a
-     * misread digit — so nothing is overwritten. We hand both numbers back and
-     * let the user decide, which is the one place this flow deliberately stops
-     * to ask.
-     */
-    const mileageConflict =
-      mileage != null && mileage < vehicle.current_mileage
-        ? { extracted: mileage, current: vehicle.current_mileage }
-        : null
-
     return res.status(201).json({
       records: inserted ?? [],
       receiptGroup,
-      mileageConflict,
+      mileageConflict: detectMileageConflict({
+        serviceDate,
+        mileage,
+        newestOnFile,
+        currentMileage: vehicle.current_mileage,
+      }),
     })
   } catch (err) {
     return sendError(res, err)
   }
+}
+
+function isUuid(value) {
+  return typeof value === 'string' &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
 }
 
 function bad(message, statusCode = 400) {
@@ -96,8 +109,3 @@ function numberOrNull(value) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
-function todayISO() {
-  const d = new Date()
-  const pad = (n) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-}

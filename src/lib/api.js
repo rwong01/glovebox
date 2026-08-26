@@ -30,6 +30,9 @@ async function post(path, body) {
     const error = new Error(payload?.error || `Request failed (${response.status})`)
     error.status = response.status
     error.payload = payload
+    // Carried up so the upload queue can pause rather than fail the batch.
+    if (Number.isFinite(payload?.retryAfter)) error.retryAfter = payload.retryAfter
+    if (payload?.quotaScope) error.quotaScope = payload.quotaScope
     throw error
   }
   return payload
