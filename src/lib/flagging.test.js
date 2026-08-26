@@ -514,3 +514,83 @@ describe('the list as a whole', () => {
     expect(flagFor(single, 'oil_change').detail).toMatch(/Assumes 1,000 mi\/month/)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Blank fields must not be read as zero.
+// ---------------------------------------------------------------------------
+describe('records with a field left blank', () => {
+  const build = (records) => buildFlags({ vehicle: vehicle(), records, rules: RULES, now: NOW })
+
+  it('ignores an inspection with no thickness written down', () => {
+    // The shop looked at the pads and passed them but did not record a number.
+    // That is not a reading of 0mm — it is no reading at all.
+    const flags = build([
+      record({ service_type: 'brake_pads_front', service_date: monthsAgo(40), mileage_at_service: 40000, measured_value: 10 }),
+      record({ service_type: 'brake_pads_front', service_date: monthsAgo(16), mileage_at_service: 60000, measured_value: 8 }),
+      record({ service_type: 'brake_pads_front', service_date: monthsAgo(2), mileage_at_service: 72000, measured_value: null }),
+    ])
+    const pads = flagFor(flags, 'brake_pads_front')
+
+    expect(pads.status).not.toBe(STATUS.RED)
+    // Wear runs 2mm per 20,000 miles, so ~7mm at 72,000 — nowhere near zero.
+    expect(pads.estimatedValue).toBeGreaterThan(6)
+  })
+
+  it('measures wear from the last real reading, ignoring blanks in between', () => {
+    const flags = build([
+      record({ service_type: 'tires_tread_front', service_date: monthsAgo(36), mileage_at_service: 30000, measured_value: 10 }),
+      record({ service_type: 'tires_tread_front', service_date: monthsAgo(12), mileage_at_service: 50000, measured_value: 8 }),
+      record({ service_type: 'tires_tread_front', service_date: monthsAgo(1), mileage_at_service: 58000, measured_value: null }),
+    ])
+    const tread = flagFor(flags, 'tires_tread_front')
+
+    // 2/32 lost over 20,000 miles, extrapolated from 8/32 at 50,000.
+    expect(tread.estimatedValue).toBeGreaterThan(6.5)
+    expect(tread.estimatedValue).toBeLessThan(8)
+    expect(tread.lastService.mileage).toBe(50000)
+  })
+
+  it('does not treat a measurement with no odometer as taken at zero miles', () => {
+    const flags = build([
+      record({ service_type: 'brake_pads_front', service_date: monthsAgo(24), mileage_at_service: null, measured_value: 9 }),
+      record({ service_type: 'brake_pads_front', service_date: monthsAgo(6), mileage_at_service: 60000, measured_value: 7 }),
+    ])
+    const pads = flagFor(flags, 'brake_pads_front')
+
+    // A point at "0 miles, 9mm" would imply a wildly wrong wear rate. Dropping
+    // it leaves a single usable reading, which is reported as measured.
+    expect(pads.estimatedValue).toBe(7)
+    expect(pads.lastService.mileage).toBe(60000)
+    expect(pads.detail).toMatch(/Only one measurement/)
+  })
+
+  it('says why the estimate runs from an older date than the last inspection', () => {
+    const flags = build([
+      record({ service_type: 'brake_pads_front', service_date: monthsAgo(30), mileage_at_service: 40000, measured_value: 9 }),
+      record({ service_type: 'brake_pads_front', service_date: monthsAgo(12), mileage_at_service: 60000, measured_value: 7 }),
+      record({ service_type: 'brake_pads_front', service_date: monthsAgo(2), mileage_at_service: 70000, measured_value: null }),
+    ])
+    const pads = flagFor(flags, 'brake_pads_front')
+
+    expect(pads.detail).toMatch(/Looked at again in .* with no figure written down/)
+  })
+
+  it('reports unknown when every reading is blank', () => {
+    const flags = build([
+      record({ service_type: 'brake_pads_front', service_date: monthsAgo(6), mileage_at_service: 60000, measured_value: null }),
+    ])
+    expect(flagFor(flags, 'brake_pads_front').status).toBe(STATUS.UNKNOWN)
+  })
+
+  it('does not treat an interval record with no odometer as done at zero miles', () => {
+    // Otherwise "miles since" becomes the entire odometer and it reads overdue.
+    const flags = build([
+      record({ service_type: 'oil_change', service_date: monthsAgo(2), mileage_at_service: null }),
+      record({ service_type: 'coolant', service_date: monthsAgo(3), mileage_at_service: 70000 }),
+    ])
+    const oil = flagFor(flags, 'oil_change')
+
+    expect(oil.status).toBe(STATUS.GREEN)
+    expect(oil.lastService.mileage).toBeNull()
+  })
+})

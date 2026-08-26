@@ -11,6 +11,7 @@
  * Everything here is pure — `now` is injected — so the behaviour is testable
  * without freezing clocks. See `flagging.test.js`.
  */
+import { numberOrNull } from './num.js'
 import {
   AVG_DAYS_PER_MONTH,
   addDays,
@@ -131,9 +132,9 @@ export function collectOdometerObservations(vehicle, records = []) {
   const byDate = new Map()
 
   for (const record of records) {
-    const mileage = Number(record?.mileage_at_service)
+    const mileage = numberOrNull(record?.mileage_at_service)
     const date = toDate(record?.service_date)
-    if (!date || !Number.isFinite(mileage) || mileage <= 0) continue
+    if (!date || mileage == null || mileage <= 0) continue
     const key = date.getTime()
     const existing = byDate.get(key)
     if (!existing || mileage > existing.mileage) byDate.set(key, { date, mileage })
@@ -144,11 +145,11 @@ export function collectOdometerObservations(vehicle, records = []) {
   // A manually-raised odometer is real information the service history does not
   // contain, so fold it in — but only when it is genuinely newer and higher,
   // since `updated_at` also moves when you merely rename the car.
-  const manualMileage = Number(vehicle?.current_mileage)
+  const manualMileage = numberOrNull(vehicle?.current_mileage)
   const manualDate = toDate(vehicle?.updated_at)
   const newest = observations[observations.length - 1]
   if (
-    Number.isFinite(manualMileage) &&
+    manualMileage != null &&
     manualMileage > 0 &&
     manualDate &&
     (!newest || (manualMileage > newest.mileage && manualDate > newest.date))
@@ -215,7 +216,7 @@ export function estimateDrivingPace(observations = []) {
  */
 export function estimateCurrentMileage({ vehicle, observations = [], pace, now }) {
   const known = Math.max(
-    Number(vehicle?.current_mileage) || 0,
+    numberOrNull(vehicle?.current_mileage) ?? 0,
     ...observations.map((o) => o.mileage),
     0,
   )
@@ -280,9 +281,9 @@ export function compareRecordsByRecency(a, b) {
     if (byDate !== 0) return byDate
   }
 
-  const aMiles = Number(a?.mileage_at_service)
-  const bMiles = Number(b?.mileage_at_service)
-  if (Number.isFinite(aMiles) && Number.isFinite(bMiles) && aMiles !== bMiles) {
+  const aMiles = numberOrNull(a?.mileage_at_service)
+  const bMiles = numberOrNull(b?.mileage_at_service)
+  if (aMiles != null && bMiles != null && aMiles !== bMiles) {
     return aMiles - bMiles
   }
 
@@ -336,9 +337,7 @@ function evaluateInterval(rule, records, ctx) {
   }
 
   const lastDate = toDate(last.service_date)
-  const lastMileage = Number.isFinite(Number(last.mileage_at_service))
-    ? Number(last.mileage_at_service)
-    : null
+  const lastMileage = numberOrNull(last.mileage_at_service)
 
   // A record with neither a date nor an odometer anchors nothing — there is no
   // point to measure an interval from. Say so instead of producing a sentence
@@ -476,14 +475,28 @@ function wearRatePerMile(points) {
 }
 
 function evaluateMeasurable(rule, records, ctx) {
+  /*
+   * Only records that actually carry a number take part in the wear maths.
+   *
+   * A shop that looked at the pads, passed them, and wrote no thickness has
+   * told us nothing measurable — that is not a reading of zero. Treating it as
+   * one would both flag the item red and drag the wear-rate line down to meet
+   * a point that was never observed. So a blank is skipped and the calculation
+   * runs from the last visit that did record a figure, extrapolated forward to
+   * today's odometer.
+   *
+   * The odometer has to be present too: without it there is nothing to plot
+   * the reading against, and a missing one read as zero would put the point at
+   * the very start of the car's life.
+   */
   let points = records
     .map((r) => ({
-      value: Number(r.measured_value),
-      mileage: Number(r.mileage_at_service),
+      value: numberOrNull(r.measured_value),
+      mileage: numberOrNull(r.mileage_at_service),
       date: toDate(r.service_date),
       record: r,
     }))
-    .filter((p) => Number.isFinite(p.value) && Number.isFinite(p.mileage))
+    .filter((p) => p.value != null && p.mileage != null)
 
   if (points.length === 0) {
     return unknownFlag(
@@ -511,16 +524,16 @@ function evaluateMeasurable(rule, records, ctx) {
       ? Math.max(0, latest.value - (ratePer10k * milesSinceMeasured) / 10000)
       : latest.value
 
-  const red = Number(rule.red_threshold)
-  const yellow = Number(rule.yellow_threshold)
+  const red = numberOrNull(rule.red_threshold)
+  const yellow = numberOrNull(rule.yellow_threshold)
   let status = STATUS.GREEN
-  if (Number.isFinite(red) && estimate <= red) status = STATUS.RED
-  else if (Number.isFinite(yellow) && estimate <= yellow) status = STATUS.YELLOW
+  if (red != null && estimate <= red) status = STATUS.RED
+  else if (yellow != null && estimate <= yellow) status = STATUS.YELLOW
 
   // Project the crossing into red, in miles then in time at the current pace.
   let dueDate = null
   let dueOdometer = null
-  if (ratePer10k != null && Number.isFinite(red)) {
+  if (ratePer10k != null && red != null) {
     const milesToRed = ((estimate - red) / ratePer10k) * 10000
     dueOdometer = Math.round(ctx.currentMileage + milesToRed)
     dueDate = projectDateForOdometer(dueOdometer, ctx)
@@ -569,6 +582,24 @@ function evaluateMeasurable(rule, records, ctx) {
       .join(' ')
   }
 
+  // An inspection since the last real reading, with no figure written down, is
+  // worth mentioning: it explains why the estimate runs from an older date, and
+  // it is mild reassurance that nothing alarming was found at the time.
+  const laterBlank = records
+    .filter((r) => numberOrNull(r.measured_value) == null)
+    .map((r) => toDate(r.service_date))
+    .filter((d) => d && latest.date && d > latest.date)
+    .sort((a, b) => b - a)[0]
+
+  if (laterBlank) {
+    detail = [
+      detail,
+      `Looked at again in ${formatMonthYear(laterBlank)} with no figure written down, so the estimate still runs from ${measuredAt ?? 'the last recorded reading'}.`,
+    ]
+      .filter(Boolean)
+      .join(' ')
+  }
+
   return {
     status,
     reason,
@@ -593,9 +624,7 @@ function evaluateQualitative(rule, records, ctx) {
   }
 
   const lastDate = toDate(last.service_date)
-  const lastMileage = Number.isFinite(Number(last.mileage_at_service))
-    ? Number(last.mileage_at_service)
-    : null
+  const lastMileage = numberOrNull(last.mileage_at_service)
   const monthsSince = Math.max(0, monthsBetween(lastDate, ctx.now) ?? 0)
   const milesSince = lastMileage != null ? Math.max(0, ctx.currentMileage - lastMileage) : null
 

@@ -11,6 +11,7 @@
  * database — and so both apply to records already stored, with no migration.
  */
 import { toDate } from './dates.js'
+import { numberOrNull } from './num.js'
 
 /**
  * @param {object[]} records rows from `service_records`
@@ -236,11 +237,3 @@ function normaliseText(value) {
   return (value ?? '').trim().toLowerCase().replace(/\s+/g, ' ')
 }
 
-function numberOrNull(value) {
-  // `Number(null)` is 0 and `Number('')` is 0, so the empty cases have to be
-  // rejected before coercion. Letting them through made an absent odometer read
-  // as 0 mi, and made an absent cost look like a different price to a real one.
-  if (value == null || value === '') return null
-  const n = Number(value)
-  return Number.isFinite(n) ? n : null
-}

@@ -1,12 +1,17 @@
+import { numberOrNull } from './num.js'
+
 const miles = new Intl.NumberFormat('en-US')
 const currency = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })
 
 export function formatMiles(value) {
-  return Number.isFinite(Number(value)) ? miles.format(Math.round(Number(value))) : null
+  // null must come back as null, not "0" — an absent odometer is not zero miles.
+  const n = numberOrNull(value)
+  return n == null ? null : miles.format(Math.round(n))
 }
 
 export function formatCurrency(value) {
-  return Number.isFinite(Number(value)) ? currency.format(Number(value)) : null
+  const n = numberOrNull(value)
+  return n == null ? null : currency.format(n)
 }
 
 /** "84,210 mi" — the odometer as it appears everywhere in the UI. */
