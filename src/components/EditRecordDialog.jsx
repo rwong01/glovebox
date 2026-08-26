@@ -1,7 +1,13 @@
 import { useMemo, useState } from 'react'
 
-import { createServiceRecord, deleteServiceRecord, updateServiceRecord } from '../lib/db.js'
+import {
+  createServiceRecord,
+  deleteServiceRecord,
+  updateServiceRecord,
+  updateServiceRecords,
+} from '../lib/db.js'
 import { toISODate } from '../lib/dates.js'
+import { findVisitFor } from '../lib/visits.js'
 import { VERDICTS } from '../lib/serviceItems.js'
 import { Button } from './ui/Button.jsx'
 import { Dialog } from './ui/Dialog.jsx'
@@ -55,10 +61,22 @@ export function EditRecordDialog(props) {
   )
 }
 
-function EditRecordForm({ open, onOpenChange, record, vehicleId, rules, onSaved }) {
+function EditRecordForm({ open, onOpenChange, record, vehicleId, rules, allRecords, onSaved }) {
   const [form, setForm] = useState(() => (record ? toForm(record) : blankForm()))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
+  // Defaults on: the date, odometer and shop belong to the visit, so changing
+  // one of them on a single row is nearly always meant for all of them.
+  const [applyToVisit, setApplyToVisit] = useState(true)
+
+  // The other line items from the same trip to the shop.
+  const visit = useMemo(
+    () => (record ? findVisitFor(allRecords ?? [], record.id) : null),
+    [allRecords, record],
+  )
+  const siblings = visit
+    ? visit.records.concat(visit.duplicates ?? []).filter((r) => r.id !== record?.id)
+    : []
 
   // 'other' has its own hardcoded option below; 'odometer_reading' isn't a
   // service at all and gets its own dedicated "Log mileage" flow instead.
@@ -92,6 +110,19 @@ function EditRecordForm({ open, onOpenChange, record, vehicleId, rules, onSaved 
     try {
       if (record) {
         await updateServiceRecord(record.id, payload)
+
+        // Carry the visit-level fields to the rest of the visit, so correcting
+        // a date does not strand this row in a visit of one.
+        if (applyToVisit && siblings.length > 0) {
+          await updateServiceRecords(
+            siblings.map((r) => r.id),
+            {
+              service_date: payload.service_date,
+              mileage_at_service: payload.mileage_at_service,
+              vendor: payload.vendor,
+            },
+          )
+        }
       } else {
         await createServiceRecord({ ...payload, vehicle_id: vehicleId, source: 'manual' })
       }
@@ -162,6 +193,24 @@ function EditRecordForm({ open, onOpenChange, record, vehicleId, rules, onSaved 
             )}
           </Field>
         </div>
+
+        {siblings.length > 0 ? (
+          <label className="-mt-1 flex cursor-pointer items-start gap-2.5 rounded-lg border border-line bg-surface-raised/60 px-3 py-2.5">
+            <input
+              type="checkbox"
+              checked={applyToVisit}
+              onChange={(e) => setApplyToVisit(e.target.checked)}
+              className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--gb-accent)]"
+            />
+            <span className="text-sm leading-snug text-fg">
+              Apply the date, odometer and shop to all {siblings.length + 1} items from this visit
+              <span className="mt-0.5 block text-xs text-muted">
+                One trip to the shop has one date — these three belong to the visit rather than to
+                each line.
+              </span>
+            </span>
+          </label>
+        ) : null}
 
         <Field label="Service">
           {({ id }) => (

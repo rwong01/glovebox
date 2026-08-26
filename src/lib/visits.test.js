@@ -1,99 +1,203 @@
 import { describe, expect, it } from 'vitest'
 
-import { groupIntoVisits } from './visits.js'
+import { dedupeRecords, findVisitFor, groupIntoVisits } from './visits.js'
 
+let seq = 0
 const record = (overrides = {}) => ({
-  id: Math.random().toString(16).slice(2),
+  id: `r${++seq}`,
   service_date: '2024-03-03',
   mileage_at_service: 84210,
   vendor: "Dave's Auto",
   service_type: 'oil_change',
+  service_type_raw: null,
   cost: null,
+  measured_value: null,
+  verdict: null,
   receipt_group: null,
+  source: 'ocr',
   ...overrides,
 })
 
 describe('grouping records into visits', () => {
-  it('collapses one trip to the shop into a single visit', () => {
-    // The complaint this fixes: two hundred line items reading as two hundred
-    // visits, when there were a dozen.
+  it('collapses the line items of one trip into a single visit', () => {
     const visits = groupIntoVisits([
       record({ service_type: 'oil_change', cost: 89.5 }),
-      record({ service_type: 'tires_tread' }),
-      record({ service_type: 'brake_rotors' }),
-      record({ service_type: 'other', cost: 25 }),
+      record({ service_type: 'brake_fluid', cost: 129 }),
+      record({ service_type: 'cabin_air_filter', cost: 45 }),
     ])
 
     expect(visits).toHaveLength(1)
-    expect(visits[0].records).toHaveLength(4)
-    expect(visits[0].cost).toBe(114.5)
-    expect(visits[0].vendor).toBe("Dave's Auto")
+    expect(visits[0].records).toHaveLength(3)
+    expect(visits[0].cost).toBe(263.5)
   })
 
   it('keeps separate trips separate', () => {
-    const visits = groupIntoVisits([
-      record({ service_date: '2024-03-03', mileage_at_service: 84210 }),
-      record({ service_date: '2025-01-09', mileage_at_service: 91000 }),
-    ])
-    expect(visits).toHaveLength(2)
+    expect(
+      groupIntoVisits([
+        record({ service_date: '2024-03-03' }),
+        record({ service_date: '2025-01-09', service_type: 'brake_fluid' }),
+      ]),
+    ).toHaveLength(2)
   })
 
-  it('uses receipt_group to attach a page that has no date or odometer of its own', () => {
+  it('separates same-day visits to different shops', () => {
+    expect(
+      groupIntoVisits([
+        record({ vendor: "Dave's Auto" }),
+        record({ vendor: 'Tire Barn', service_type: 'tires_age_front' }),
+      ]),
+    ).toHaveLength(2)
+  })
+
+  it('merges pages that disagree on the odometer by a misread digit', () => {
+    // Same day, same shop — it cannot be two visits. The higher reading wins.
     const visits = groupIntoVisits([
-      record({ receipt_group: 'abc', service_date: '2024-03-03', mileage_at_service: 84210 }),
-      record({ receipt_group: 'abc', service_date: null, mileage_at_service: null, vendor: null }),
+      record({ mileage_at_service: 84210 }),
+      record({ mileage_at_service: 84270, service_type: 'brake_fluid' }),
+    ])
+
+    expect(visits).toHaveLength(1)
+    expect(visits[0].mileage).toBe(84270)
+  })
+
+  it('attaches a page with no date of its own via its receipt group', () => {
+    const visits = groupIntoVisits([
+      record({ receipt_group: 'abc' }),
+      record({
+        receipt_group: 'abc',
+        service_date: null,
+        mileage_at_service: null,
+        vendor: null,
+        service_type: 'brake_fluid',
+      }),
     ])
 
     expect(visits).toHaveLength(1)
     expect(visits[0].date).toBe('2024-03-03')
-    expect(visits[0].mileage).toBe(84210)
-    expect(visits[0].vendor).toBe("Dave's Auto")
   })
 
   it('merges pages scanned before grouping existed, without a migration', () => {
-    // Each page got its own receipt_group back then. The natural key still
-    // recognises them as one trip to the shop.
+    // Each page got its own receipt_group back then.
     const visits = groupIntoVisits([
       record({ receipt_group: 'one', service_type: 'oil_change' }),
-      record({ receipt_group: 'two', service_type: 'brake_pads' }),
-      record({ receipt_group: 'three', service_type: 'tires_tread' }),
+      record({ receipt_group: 'two', service_type: 'brake_fluid' }),
+      record({ receipt_group: 'three', service_type: 'coolant' }),
     ])
 
     expect(visits).toHaveLength(1)
     expect(visits[0].records).toHaveLength(3)
   })
 
-  it('separates same-day visits to different shops', () => {
+  it('folds a page whose shop name was cropped into that day\'s named visit', () => {
     const visits = groupIntoVisits([
       record({ vendor: "Dave's Auto" }),
-      record({ vendor: 'Tire Barn', mileage_at_service: 84215 }),
+      record({ vendor: null, service_type: 'brake_fluid' }),
     ])
-    expect(visits).toHaveLength(2)
+
+    expect(visits).toHaveLength(1)
+    expect(visits[0].vendor).toBe("Dave's Auto")
   })
 
-  it('sorts newest first', () => {
+  it('leaves a nameless page alone when two shops were visited that day', () => {
+    // No way to tell which one it belongs to, so guessing would be wrong.
     const visits = groupIntoVisits([
-      record({ service_date: '2019-05-01', mileage_at_service: 40000 }),
-      record({ service_date: '2025-01-09', mileage_at_service: 91000 }),
-      record({ service_date: '2022-06-06', mileage_at_service: 70000 }),
+      record({ vendor: "Dave's Auto" }),
+      record({ vendor: 'Tire Barn', service_type: 'tires_age_front' }),
+      record({ vendor: null, service_type: 'brake_fluid' }),
     ])
-    expect(visits.map((v) => v.date)).toEqual(['2025-01-09', '2022-06-06', '2019-05-01'])
+
+    expect(visits).toHaveLength(3)
   })
 
-  it('puts undated visits last rather than pretending they are from 1970', () => {
+  it('sorts newest first, with undated visits last', () => {
     const visits = groupIntoVisits([
-      record({ service_date: null, mileage_at_service: null, receipt_group: 'x' }),
-      record({ service_date: '2019-05-01', mileage_at_service: 40000 }),
+      record({ service_date: '2024-03-03' }),
+      record({ service_date: null, receipt_group: null, service_type: 'coolant' }),
+      record({ service_date: '2025-01-09', service_type: 'brake_fluid' }),
     ])
-    expect(visits[0].date).toBe('2019-05-01')
-    expect(visits[1].date).toBeNull()
+    expect(visits.map((v) => v.date)).toEqual(['2025-01-09', '2024-03-03', null])
+  })
+})
+
+describe('de-duplicating repeated line items', () => {
+  it('keeps one row when a summary page repeats a detail page', () => {
+    const visits = groupIntoVisits([
+      record({ service_type: 'oil_change', cost: 89.5 }),
+      record({ service_type: 'oil_change' }), // same work, restated
+    ])
+
+    expect(visits[0].records).toHaveLength(1)
+    expect(visits[0].duplicates).toHaveLength(1)
+    // And the total is not double counted.
+    expect(visits[0].cost).toBe(89.5)
   })
 
-  it('leaves cost null when no line item had a price', () => {
-    expect(groupIntoVisits([record({ cost: null })])[0].cost).toBeNull()
+  it('keeps whichever copy carries more information', () => {
+    const visits = groupIntoVisits([
+      record({ service_type: 'tires_tread_front' }),
+      record({ service_type: 'tires_tread_front', measured_value: 6, cost: 20 }),
+    ])
+
+    expect(visits[0].records).toHaveLength(1)
+    expect(visits[0].records[0].measured_value).toBe(6)
   })
 
-  it('handles an empty history', () => {
-    expect(groupIntoVisits([])).toEqual([])
+  it('does not merge different tracked items', () => {
+    const visits = groupIntoVisits([
+      record({ service_type: 'brake_pads_front', measured_value: 6 }),
+      record({ service_type: 'brake_pads_rear', measured_value: 8 }),
+    ])
+    expect(visits[0].records).toHaveLength(2)
+  })
+
+  it('compares catch-all rows on their wording, since a visit can have several', () => {
+    const visits = groupIntoVisits([
+      record({ service_type: 'other', service_type_raw: 'Wiper blades', cost: 24 }),
+      record({ service_type: 'other', service_type_raw: 'Tire rotation', cost: 25 }),
+      record({ service_type: 'other', service_type_raw: 'wiper blades' }), // restated
+    ])
+
+    expect(visits[0].records).toHaveLength(2)
+    expect(visits[0].cost).toBe(49)
+  })
+
+  it('keeps two identically-worded rows that carry different prices', () => {
+    // Two real labour lines, not one printed twice.
+    const visits = groupIntoVisits([
+      record({ service_type: 'other', service_type_raw: 'Labor', cost: 120 }),
+      record({ service_type: 'other', service_type_raw: 'Labor', cost: 60 }),
+    ])
+
+    expect(visits[0].records).toHaveLength(2)
+    expect(visits[0].cost).toBe(180)
+  })
+
+  it('is available on its own for reuse', () => {
+    const { kept, duplicates } = dedupeRecords([
+      record({ service_type: 'coolant' }),
+      record({ service_type: 'coolant' }),
+    ])
+    expect(kept).toHaveLength(1)
+    expect(duplicates).toHaveLength(1)
+  })
+})
+
+describe('finding the visit a record belongs to', () => {
+  it('returns the visit and all of its siblings', () => {
+    const target = record({ service_type: 'brake_fluid' })
+    const visit = findVisitFor([record({ service_type: 'oil_change' }), target], target.id)
+
+    expect(visit.records).toHaveLength(2)
+    expect(visit.date).toBe('2024-03-03')
+  })
+
+  it('finds a record even when it was de-duplicated out of view', () => {
+    const dupe = record({ service_type: 'oil_change' })
+    const visit = findVisitFor([record({ service_type: 'oil_change', cost: 89.5 }), dupe], dupe.id)
+    expect(visit).not.toBeNull()
+  })
+
+  it('returns null for an unknown record', () => {
+    expect(findVisitFor([record()], 'nope')).toBeNull()
   })
 })

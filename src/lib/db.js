@@ -70,3 +70,21 @@ export async function updateServiceRecord(id, patch) {
 export async function deleteServiceRecord(id) {
   return unwrap(await supabase.from('service_records').delete().eq('id', id))
 }
+
+/**
+ * Applies the same change to every record in one visit, in a single statement.
+ *
+ * A visit's date, odometer and shop belong to the visit, not to each line item
+ * under it — one trip where four things were done has one date. Editing them
+ * row by row is both tedious and a way to split a visit in half by fixing three
+ * of its four rows.
+ */
+export async function updateServiceRecords(ids, patch) {
+  if (!Array.isArray(ids) || ids.length === 0) return []
+  return unwrap(await supabase.from('service_records').update(patch).in('id', ids).select())
+}
+
+export async function deleteServiceRecords(ids) {
+  if (!Array.isArray(ids) || ids.length === 0) return []
+  return unwrap(await supabase.from('service_records').delete().in('id', ids))
+}

@@ -4,6 +4,7 @@ import { ArrowLeft, CalendarClock, Camera, Gauge, Plus, SlidersHorizontal } from
 
 import { AppShell } from '../components/AppShell.jsx'
 import { EditRecordDialog } from '../components/EditRecordDialog.jsx'
+import { EditVisitDialog } from '../components/EditVisitDialog.jsx'
 import { RepairDatesDialog } from '../components/RepairDatesDialog.jsx'
 import { FlagList } from '../components/FlagList.jsx'
 import { LogMileageDialog } from '../components/LogMileageDialog.jsx'
@@ -25,6 +26,8 @@ export default function VehicleDetail() {
   const [recordOpen, setRecordOpen] = useState(false)
   const [vehicleOpen, setVehicleOpen] = useState(false)
   const [repairOpen, setRepairOpen] = useState(false)
+  const [editingVisit, setEditingVisit] = useState(null)
+  const [visitOpen, setVisitOpen] = useState(false)
   const [mileageOpen, setMileageOpen] = useState(false)
 
   const vehicle = vehicles.find((v) => v.id === vehicleId)
@@ -72,6 +75,11 @@ export default function VehicleDetail() {
   if (!vehicle) return <Navigate to="/" replace />
 
   const subtitle = [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ')
+
+  function openVisit(visit) {
+    setEditingVisit(visit)
+    setVisitOpen(true)
+  }
 
   function openRecord(record) {
     setEditingRecord(record)
@@ -163,7 +171,12 @@ export default function VehicleDetail() {
       {vehicleRecords.length > 0 ? (
         <section className="mt-10">
           <SectionTitle>Service log</SectionTitle>
-          <ServiceLogTable records={vehicleRecords} rules={rules} onEdit={openRecord} />
+          <ServiceLogTable
+            records={vehicleRecords}
+            rules={rules}
+            onEdit={openRecord}
+            onEditVisit={openVisit}
+          />
         </section>
       ) : null}
 
@@ -173,6 +186,15 @@ export default function VehicleDetail() {
         record={editingRecord}
         vehicleId={vehicle.id}
         rules={rules}
+        allRecords={vehicleRecords}
+        onSaved={refresh}
+      />
+
+      <EditVisitDialog
+        open={visitOpen}
+        onOpenChange={setVisitOpen}
+        visit={editingVisit}
+        names={Object.fromEntries(rules.map((r) => [r.item_key, r.display_name]))}
         onSaved={refresh}
       />
 

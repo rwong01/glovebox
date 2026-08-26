@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { ChevronDown, Search } from 'lucide-react'
+import { ChevronDown, Pencil, Search } from 'lucide-react'
 
 import { formatDay } from '../lib/dates.js'
 import { formatCurrency, formatMiles } from '../lib/format.js'
@@ -20,7 +20,7 @@ const COLLAPSED_VISITS = 5
  * rows hides that entirely. So each visit is one row here — date, shop,
  * odometer, total — and expands to show what was done.
  */
-export function ServiceLogTable({ records, rules, onEdit }) {
+export function ServiceLogTable({ records, rules, onEdit, onEditVisit }) {
   const [query, setQuery] = useState('')
   const [item, setItem] = useState('all')
   const [expanded, setExpanded] = useState(false)
@@ -132,6 +132,7 @@ export function ServiceLogTable({ records, rules, onEdit }) {
               open={openVisits.has(visit.key) || filtering}
               onToggle={() => toggleVisit(visit.key)}
               onEdit={onEdit}
+              onEditVisit={onEditVisit}
             />
           ))}
         </ul>
@@ -150,16 +151,17 @@ export function ServiceLogTable({ records, rules, onEdit }) {
   )
 }
 
-function VisitRow({ visit, names, units, open, onToggle, onEdit }) {
+function VisitRow({ visit, names, units, open, onToggle, onEdit, onEditVisit }) {
   const count = visit.records.length
 
   return (
     <li>
+      <div className="group flex items-start transition-colors hover:bg-surface-raised">
       <button
         type="button"
         onClick={onToggle}
         aria-expanded={open}
-        className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-surface-raised"
+        className="flex min-w-0 flex-1 items-start gap-3 py-3 pr-2 pl-4 text-left"
       >
         <div className="min-w-0 flex-1">
           <p className="flex flex-wrap items-baseline gap-x-2 text-sm">
@@ -173,6 +175,11 @@ function VisitRow({ visit, names, units, open, onToggle, onEdit }) {
               `${count} ${count === 1 ? 'item' : 'items'}`,
               visit.mileage != null ? `${formatMiles(visit.mileage)} mi` : null,
               visit.cost != null ? formatCurrency(visit.cost) : null,
+              // Rows the same visit stated twice across its pages, hidden here
+              // but worth saying so the count is not a mystery.
+              visit.duplicates?.length
+                ? `${visit.duplicates.length} repeated ${visit.duplicates.length === 1 ? 'row' : 'rows'} hidden`
+                : null,
             ]
               .filter(Boolean)
               .join(' · ')}
@@ -185,6 +192,16 @@ function VisitRow({ visit, names, units, open, onToggle, onEdit }) {
           className={cn('mt-1 shrink-0 text-muted transition-transform', open && 'rotate-180')}
         />
       </button>
+
+      <button
+        type="button"
+        onClick={() => onEditVisit?.(visit)}
+        aria-label={`Edit this visit${visit.date ? ` on ${formatDay(visit.date)}` : ''}`}
+        className="mt-2 mr-2 shrink-0 rounded-lg p-2 text-muted transition-colors hover:text-fg"
+      >
+        <Pencil size={15} aria-hidden="true" />
+      </button>
+      </div>
 
       {open ? (
         <ul className="border-t border-line bg-surface-raised/40">
