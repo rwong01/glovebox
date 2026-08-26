@@ -71,7 +71,7 @@ export default function Upload() {
           <p className="text-sm text-muted">
             {savedCount} {savedCount === 1 ? 'receipt' : 'receipts'} added.
           </p>
-          <Button as={Link} to={`/vehicle/${vehicleId}`} variant="secondary" onClick={refresh}>
+          <Button as={Link} to={`/vehicle/${vehicleId}`} variant="secondary">
             Back to {vehicle.nickname}
           </Button>
         </div>

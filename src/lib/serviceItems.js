@@ -35,6 +35,9 @@ export const CANONICAL_UNITS = {
 
 const MM_PER_32ND = 25.4 / 32 // 0.79375
 
+/** Applies to both units: 40mm and 40/32" are each far past anything real. */
+const MAX_PLAUSIBLE_READING = 40
+
 /**
  * Normalises a measurement to the unit the item is stored in.
  *
@@ -58,9 +61,10 @@ export function toCanonicalMeasurement(value, unit, itemKey) {
   if (inMillimetres == null) return null
   const out = target === 'mm' ? inMillimetres : inMillimetres / MM_PER_32ND
 
-  // Guard against a misread that would produce a nonsense reading — no pad or
-  // tyre is 400mm thick, and a negative one is not a reading at all.
-  if (!Number.isFinite(out) || out < 0 || out > (target === 'mm' ? 40 : 40)) return null
+  // Guard against a misread. A negative reading is not a reading, and the upper
+  // bound sits well above anything real in either unit: new pads are ~12mm, new
+  // tread is ~11/32. Anything past this came from a mangled digit.
+  if (!Number.isFinite(out) || out < 0 || out > MAX_PLAUSIBLE_READING) return null
   return Math.round(out * 100) / 100
 }
 

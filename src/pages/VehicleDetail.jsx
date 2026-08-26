@@ -107,8 +107,12 @@ export default function VehicleDetail() {
             </Button>
           }
         />
-      ) : (
+      ) : result ? (
         <FlagList result={result} />
+      ) : (
+        <ErrorNote>
+          The service rules table is empty. Run supabase/schema.sql to seed it.
+        </ErrorNote>
       )}
 
       <div className="mt-6 flex gap-2">

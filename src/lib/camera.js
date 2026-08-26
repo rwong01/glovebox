@@ -105,8 +105,9 @@ export function analysisPixels(canvas, targetWidth) {
   const small = document.createElement('canvas')
   small.width = width
   small.height = height
-  small.getContext('2d').drawImage(canvas, 0, 0, width, height)
-  return small.getContext('2d').getImageData(0, 0, width, height)
+  const ctx = small.getContext('2d')
+  ctx.drawImage(canvas, 0, 0, width, height)
+  return ctx.getImageData(0, 0, width, height)
 }
 
 export function canvasToDataUrl(canvas, quality = JPEG_QUALITY) {
